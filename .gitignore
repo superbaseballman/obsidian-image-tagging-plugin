@@ -1,0 +1,24 @@
+# 依赖目录
+node_modules/
+
+# 构建产物（除了主入口文件）
+!main.js
+*.js
+*.js.map
+
+# TypeScript源文件除外
+!*.ts
+
+# Source maps
+*.js.map
+
+# 日志文件
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 可选的依赖项
+optionalDependencies/
+
+# Obsidian开发相关
+*.excalidraw
