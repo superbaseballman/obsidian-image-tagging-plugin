@@ -217,7 +217,7 @@ export class ImageView extends ItemView {
         const files = this.app.vault.getFiles();
         const matchingFile = files.find(file => file.name === path || file.basename + '.' + file.extension === path);
         if (matchingFile) {
-          return this.app.vault.getResourcePath(matchingFile.path);
+          return this.app.vault.getResourcePath(matchingFile);
         }
       }
       
@@ -227,9 +227,16 @@ export class ImageView extends ItemView {
         // 如果文件不存在，返回占位符
         return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWVlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlPC90ZXh0Pjwvc3ZnPg==';
       }
-      
-      // 否则使用 Obsidian 的 getResourcePath 方法获取正确的资源路径
-      return this.app.vault.getResourcePath(path);
+
+      // 只有当 abstractFile 是 TFile（文件）时，才传入 getResourcePath
+      // 避免把 string/undefined 传给 getResourcePath
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore — Obsidian 类型库可能把 getResourcePath 的签名定义为接收 TFile
+      if ((abstractFile as any).path) {
+        return this.app.vault.getResourcePath(abstractFile as any);
+      }
+
+      return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWVlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlPC90ZXh0Pjwvc3ZnPg==';
     } catch (e) {
       // 如果 getResourcePath 失败，返回一个默认的占位符图像
       console.warn(`无法获取图片路径: ${path}`, e);
@@ -296,7 +303,10 @@ export class ImageView extends ItemView {
     return new Promise((resolve) => {
       try {
         const img = new Image();
-        const url = this.app.vault.getResourcePath(file.path);
+        // 使用 TFile 对象来获取资源 URL，避免传入 undefined/字符串到 getResourcePath
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        const url = this.app.vault.getResourcePath(file);
         
         img.onload = () => {
           resolve(`${img.width}x${img.height}`);
