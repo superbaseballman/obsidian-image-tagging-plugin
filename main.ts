@@ -314,15 +314,9 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
   async openGalleryView() {
     const { workspace } = this.app;
 
-    let leaf: WorkspaceLeaf | null = null;
-    const leaves = workspace.getLeavesOfType(GALLERY_VIEW_TYPE);
-
-    if (leaves.length > 0) {
-      leaf = leaves[0];
-    } else {
-      leaf = workspace.getRightLeaf(false);
-      await leaf.setViewState({ type: GALLERY_VIEW_TYPE, active: true });
-    }
+    // 总是创建一个新的标签页
+    const leaf = workspace.getLeaf(true);
+    await leaf.setViewState({ type: GALLERY_VIEW_TYPE, active: true });
 
     workspace.revealLeaf(leaf);
   }

@@ -450,7 +450,7 @@
   height: 100%;
 }
 
-.modal-content {
+.image-detail-modal .modal-content {
   position: relative;
   background-color: var(--background-primary);
   border-radius: 8px;

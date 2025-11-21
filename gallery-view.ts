@@ -32,7 +32,7 @@ export class GalleryView extends ItemView {
   async onOpen() {
     this.containerEl.empty();
     this.createView();
-    this.loadData();
+    await this.refreshData();
   }
 
   async onClose() {
@@ -159,6 +159,18 @@ export class GalleryView extends ItemView {
   }
 
   private imageGrid: HTMLElement;
+
+  private async refreshData() {
+    // 从插件实例获取最新数据
+    const plugin = (this.app as any).plugins.plugins['image-tagging-obsidian'];
+    if (plugin && plugin.imageDataManager) {
+      // 更新本地引用的数据管理器
+      this.imageDataManager = plugin.imageDataManager;
+    }
+    
+    // 重新加载并渲染数据
+    this.renderImages();
+  }
 
   private loadData() {
     // 从数据管理器加载数据
