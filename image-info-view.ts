@@ -76,7 +76,8 @@ export class ImageView extends ItemView {
         title: file.basename,
         tags: [],
         date: new Date().toISOString(),
-        size: this.formatFileSize(file.size),
+        size: this.formatFileSize(file.stat.size),
+        fileSize: file.stat.size, // 添加原始字节大小
         resolution: '未知',
         format: file.extension.toUpperCase(),
         description: '',
@@ -169,7 +170,17 @@ export class ImageView extends ItemView {
     fileInfoContainer.createEl('label', { text: '文件信息' });
     
     const fileInfo = fileInfoContainer.createEl('div', { cls: 'file-properties' });
-    fileInfo.createEl('p', { text: `路径: ${imageData.path}` });
+    // 创建可点击的路径链接
+    const pathContainer = fileInfo.createEl('p');
+    pathContainer.createEl('span', { text: '路径: ' });
+    const pathLink = pathContainer.createEl('a', {
+      text: imageData.path,
+      cls: 'file-path-link'
+    });
+    pathLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      this.openImageFile(imageData.path);
+    });
     fileInfo.createEl('p', { text: `大小: ${imageData.size}` });
     fileInfo.createEl('p', { text: `格式: ${imageData.format}` });
     fileInfo.createEl('p', { text: `分辨率: ${imageData.resolution}` });
@@ -321,5 +332,22 @@ export class ImageView extends ItemView {
         resolve('无法获取');
       }
     });
+  }
+
+  private async openImageFile(path: string) {
+    try {
+      const file = this.app.vault.getAbstractFileByPath(path);
+      // 避免在运行时依赖 TFile 标识符（可能在打包时不可用），使用 path 属性判断
+      if (file && (file as any).path) {
+        // 在新标签页中打开图片文件
+        const leaf = this.app.workspace.getLeaf(true);
+        await leaf.openFile(file as any);
+      } else {
+        new Notice(`找不到文件: ${path}`);
+      }
+    } catch (error) {
+      console.error('打开图片文件失败:', error);
+      new Notice(`无法打开文件: ${path}`);
+    }
   }
 }

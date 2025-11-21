@@ -367,13 +367,61 @@
   align-items: center;
 }
 
-.category-item:hover {
-  background-color: var(--background-secondary);
-}
-
-.category-item.active {
-  background-color: var(--interactive-accent);
-  color: white;
+.category-item:hover {
+  background-color: var(--background-secondary);
+}
+
+.category-item.active {
+  background-color: var(--interactive-accent);
+  color: white;
+}
+
+.category-item {
+  position: relative;
+}
+
+.delete-category-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: pointer;
+  color: var(--text-muted);
+  font-weight: bold;
+  padding: 0 5px;
+}
+
+.delete-category-btn:hover {
+  color: var(--text-error);
+}
+
+.add-category-container {
+  display: flex;
+  gap: 5px;
+  margin-top: 10px;
+  padding: 0 10px;
+}
+
+.add-category-input {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background-color: var(--background-primary-alt);
+  color: var(--text-normal);
+}
+
+.add-category-btn {
+  padding: 6px 10px;
+  background-color: var(--background-secondary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.add-category-btn:hover {
+  background-color: var(--background-modifier-hover);
 }
 
 .tags-cloud {
@@ -629,13 +677,40 @@
   color: var(--text-normal);
 }
 
-.modal-cancel-btn:hover {
-  background-color: var(--background-modifier-hover);
-}
-
-/* 适配深色主题 */
-.theme-dark .tag-color-yellow {
-  color: var(--text-normal);
+.modal-cancel-btn:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.file-path-link {
+  color: var(--text-accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.file-path-link:hover {
+  color: var(--text-accent-hover);
+}
+
+.image-path-link {
+  color: var(--text-accent);
+  text-decoration: none;
+  font-size: 0.75em;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.image-path-link:hover {
+  color: var(--text-accent-hover);
+  text-decoration: underline;
+}
+
+/* 适配深色主题 */
+.theme-dark .tag-color-yellow {
+  color: var(--text-normal);
 }
 
 /* 响应式设计 */

@@ -127,6 +127,7 @@ export default class ImageTaggingPlugin extends Plugin {
       tags: [],
       date: new Date().toISOString(),
       size: this.formatFileSize(file.size),
+      fileSize: file.size, // 添加原始字节大小
       resolution: '未知', // 需要额外的库才能在后台获取分辨率
       format: file.extension.toUpperCase(),
       description: '',
@@ -192,8 +193,9 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
     
     // 1. 尝试使用完整的/绝对路径或当前 Obsidian API 可以直接解析的路径
     let file = this.app.vault.getAbstractFileByPath(cleanPath);
-    if (file instanceof TFile) {
-        return file;
+    // 运行时可能无法使用 TFile 符号（打包/类型移除），使用更稳健的检查
+    if (file && (file as any).path) {
+      return file as any;
     }
 
     // 2. 处理相对路径 (./ 或 ../)
@@ -205,8 +207,8 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
         
         if (resolvedPath) {
             file = this.app.vault.getAbstractFileByPath(resolvedPath);
-            if (file instanceof TFile) {
-                return file;
+            if (file && (file as any).path) {
+              return file as any;
             }
         }
     } else {
@@ -275,7 +277,14 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
   async scanAllImages() {
     new Notice('开始扫描图片文件...');
     
-    const allFiles = this.app.vault.getFiles();
+    let allFiles = this.app.vault.getFiles();
+    
+    // 如果设置了扫描文件夹路径，则只扫描该文件夹中的文件
+    if (this.settings.scanFolderPath && this.settings.scanFolderPath.trim() !== '') {
+      const folderPath = this.settings.scanFolderPath;
+      allFiles = allFiles.filter(file => file.path.startsWith(folderPath));
+    }
+    
     let imageCount = 0;
     
     for (const file of allFiles) {
@@ -399,13 +408,45 @@ class ImageTaggingSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
+
       .setName('导入时自动添加标签')
+
       .setDesc('当新图片添加到库中时，是否自动创建标签数据项')
+
       .addToggle(toggle => toggle
+
         .setValue(this.plugin.settings.autoTagOnImport)
+
         .onChange(async (value) => {
+
           this.plugin.settings.autoTagOnImport = value;
+
           await this.plugin.saveSettings();
+
         }));
+
+
+
+    new Setting(containerEl)
+
+      .setName('扫描指定文件夹')
+
+      .setDesc('指定要扫描图片的文件夹路径（留空则扫描整个库）')
+
+      .addText(text => text
+
+        .setPlaceholder('例如：Attachments/images')
+
+        .setValue(this.plugin.settings.scanFolderPath)
+
+        .onChange(async (value) => {
+
+          this.plugin.settings.scanFolderPath = value;
+
+          await this.plugin.saveSettings();
+
+        }));
+
   }
+
 }

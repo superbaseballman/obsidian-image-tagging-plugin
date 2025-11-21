@@ -5,16 +5,29 @@ import { ImageData, ImageTaggingSettings, ImageDataManager } from './image-data-
 export const GALLERY_VIEW_TYPE = 'image-gallery-view';
 
 // 图库视图类
+
 export class GalleryView extends ItemView {
+
   settings: ImageTaggingSettings;
+
   imageDataManager: ImageDataManager;
+
   currentFilter: string = '';
+
   currentCategory: string = '全部图片';
 
+  categories: string[] = ['全部图片', '风景', '人物', '建筑', '美食', '植物', '动物', '艺术'];
+
+
+
   constructor(leaf: WorkspaceLeaf, settings: ImageTaggingSettings, imageDataManager: ImageDataManager) {
+
     super(leaf);
+
     this.settings = settings;
+
     this.imageDataManager = imageDataManager;
+
   }
 
   getViewType(): string {
@@ -66,21 +79,75 @@ export class GalleryView extends ItemView {
     const categoriesList = categoriesSection.createEl('ul', { cls: 'categories-list' });
     
     // 添加分类项
-    ['全部图片', '风景', '人物', '建筑', '美食', '植物', '动物', '艺术'].forEach((category, index) => {
-      const li = categoriesList.createEl('li', { 
-        cls: `category-item ${index === 0 ? 'active' : ''}`,
-        text: category
-      });
+
+    this.categories.forEach((category, index) => {
+
+      const li = this.createCategoryElement(categoriesList, category, index === 0);
+
       li.addEventListener('click', () => {
+
         this.currentCategory = category;
+
         // 移除所有活动状态
+
         categoriesList.querySelectorAll('.category-item').forEach(item => {
+
           item.removeClass('active');
+
         });
+
         // 添加当前活动状态
+
         li.addClass('active');
+
         this.renderImages();
+
       });
+
+    });
+
+
+
+    // 添加添加新分类的输入框和按钮
+
+    const addCategoryContainer = sidebar.createEl('div', { cls: 'add-category-container' });
+
+    const addCategoryInput = addCategoryContainer.createEl('input', {
+
+      cls: 'add-category-input',
+
+      type: 'text',
+
+      placeholder: '添加新分类...'
+
+    });
+
+    const addCategoryBtn = addCategoryContainer.createEl('button', {
+
+      cls: 'add-category-btn',
+
+      text: '添加'
+
+    });
+
+
+
+    addCategoryBtn.addEventListener('click', () => {
+
+      this.addNewCategory(addCategoryInput, categoriesList);
+
+    });
+
+
+
+    addCategoryInput.addEventListener('keypress', (e) => {
+
+      if (e.key === 'Enter') {
+
+        this.addNewCategory(addCategoryInput, categoriesList);
+
+      }
+
     });
     
     // 热门标签
@@ -252,29 +319,65 @@ export class GalleryView extends ItemView {
       const imagePath = this.getSafeImagePath(image.path);
       
       imageCard.innerHTML = `
+
         <div class="image-card-inner">
+
           <div class="image-preview-container">
+
             <img src="${imagePath}" alt="${image.title}" class="image-preview">
+
             <div class="image-overlay">
+
               <div class="image-overlay-content">
+
                 <h4 class="image-title">${image.title}</h4>
+
                 <div class="image-tags-preview">${tagsHtml}</div>
+
               </div>
+
             </div>
+
           </div>
+
           <div class="image-info-bar">
+
+            <a href="#" class="file-path-link image-path-link" data-path="${image.path}">${image.path.split('/').pop()}</a>
+
             <span class="image-size">${image.size}</span>
+
             <span class="image-resolution">${image.resolution}</span>
+
           </div>
+
         </div>
+
       `;
       
       // 添加点击事件打开详情
+
       imageCard.addEventListener('click', (e) => {
-        // 如果点击的是标签，则不打开详情
-        if (!(e.target as HTMLElement).classList.contains('image-tag')) {
+
+        const target = e.target as HTMLElement;
+
+        // 如果点击的是路径链接，则打开文件而不是详情
+
+        if (target.classList.contains('file-path-link') || target.classList.contains('image-path-link')) {
+
+          e.preventDefault();
+
+          const path = target.getAttribute('data-path') || image.path;
+
+          this.openImageFile(path);
+
+        } else if (!target.classList.contains('image-tag')) {
+
+          // 如果点击的是标签，则不打开详情
+
           this.openImageDetail(image);
+
         }
+
       });
     });
     
@@ -435,14 +538,23 @@ export class GalleryView extends ItemView {
               </div>
             </div>
             <div class="info-section file-info-section">
+
               <label>文件信息</label>
+
               <div class="file-info">
-                <p><strong>路径:</strong> ${image.path}</p>
+
+                <p><strong>路径:</strong> <a href="#" class="file-path-link" data-path="${image.path}">${image.path}</a></p>
+
                 <p><strong>大小:</strong> ${image.size}</p>
+
                 <p><strong>格式:</strong> ${image.format}</p>
+
                 <p><strong>分辨率:</strong> ${image.resolution}</p>
+
                 <p><strong>修改时间:</strong> ${new Date(image.lastModified).toLocaleString()}</p>
+
               </div>
+
             </div>
           </div>
         </div>
@@ -514,30 +626,313 @@ export class GalleryView extends ItemView {
     });
     
     // 保存修改
+
     const saveBtn = modal.querySelector('.modal-save-btn');
+
     saveBtn?.addEventListener('click', async () => {
+
       // 更新图片数据
+
       const titleInput = modal.querySelector('.title-input') as HTMLInputElement;
+
       const descInput = modal.querySelector('.description-input') as HTMLTextAreaElement;
+
       
+
       if (titleInput) image.title = titleInput.value;
+
       if (descInput) image.description = descInput.value;
+
       
+
       // 更新最后修改时间
+
       image.date = new Date().toISOString();
+
       
+
       // 保存到数据管理器
+
       this.imageDataManager.addImageData(image);
+
       
+
       // 保存到文件
+
       const plugin = (this.app as any).plugins.plugins['image-tagging-obsidian'];
+
       if (plugin) {
+
         await plugin.saveDataToFile();
+
       }
+
       
+
       new Notice(`已保存 ${image.title} 的信息`);
+
       closeModal();
+
       this.renderImages(); // 重新渲染
+
+    });
+
+
+
+    // 添加路径链接的点击事件
+
+    modal.querySelectorAll('.file-path-link').forEach(link => {
+
+      link.addEventListener('click', (e) => {
+
+        e.preventDefault();
+
+        const path = (e.target as HTMLElement).getAttribute('data-path');
+
+        if (path) {
+
+          this.openImageFile(path);
+
+        }
+
+      });
+
     });
   }
+
+
+
+  private createCategoryElement(parent: HTMLElement, category: string, isActive: boolean): HTMLElement {
+
+    const li = parent.createEl('li', { 
+
+      cls: `category-item ${isActive ? 'active' : ''}`,
+
+      text: category
+
+    });
+
+    
+
+    // 为"全部图片"以外的分类添加删除按钮
+
+    if (category !== '全部图片') {
+
+      const deleteBtn = li.createEl('span', {
+
+        cls: 'delete-category-btn',
+
+        text: '×'
+
+      });
+
+      
+
+      deleteBtn.addEventListener('click', (e) => {
+
+        e.stopPropagation(); // 阻止点击事件冒泡到li元素
+
+        this.deleteCategory(category, parent);
+
+      });
+
+    }
+
+    
+
+    return li;
+
+  }
+
+
+
+  private addNewCategory(input: HTMLInputElement, categoriesList: HTMLElement) {
+
+    const newCategory = input.value.trim();
+
+    if (!newCategory) return;
+
+    
+
+    // 检查分类是否已存在
+
+    if (this.categories.includes(newCategory)) {
+
+      new Notice(`分类 "${newCategory}" 已存在！`);
+
+      return;
+
+    }
+
+    
+
+    // 添加新分类到数组
+
+    this.categories.push(newCategory);
+
+    
+
+    // 创建新的分类元素
+
+    const newCategoryElement = this.createCategoryElement(categoriesList, newCategory, false);
+
+    newCategoryElement.addEventListener('click', () => {
+
+      this.currentCategory = newCategory;
+
+      // 移除所有活动状态
+
+      categoriesList.querySelectorAll('.category-item').forEach(item => {
+
+        item.removeClass('active');
+
+      });
+
+      // 添加当前活动状态
+
+      newCategoryElement.addClass('active');
+
+      this.renderImages();
+
+    });
+
+    
+
+    // 清空输入框
+
+    input.value = '';
+
+    
+
+    new Notice(`已添加分类 "${newCategory}"`);
+
+  }
+
+
+
+  private deleteCategory(category: string, categoriesList: HTMLElement) {
+
+    // 确认删除
+
+    if (confirm(`确定要删除分类 "${category}" 吗？`)) {
+
+      // 从数组中移除分类
+
+      this.categories = this.categories.filter(cat => cat !== category);
+
+      
+
+      // 如果当前分类被删除，切换到"全部图片"
+
+      if (this.currentCategory === category) {
+
+        this.currentCategory = '全部图片';
+
+        // 重新激活"全部图片"项
+
+        categoriesList.querySelectorAll('.category-item').forEach(item => {
+
+          item.removeClass('active');
+
+        });
+
+        const allImagesItem = Array.from(categoriesList.querySelectorAll('.category-item'))
+
+          .find(item => item.getText() === '全部图片');
+
+        if (allImagesItem) {
+
+          allImagesItem.addClass('active');
+
+        }
+
+      }
+
+      
+
+      // 重新渲染分类列表
+
+      this.renderCategoryList(categoriesList);
+
+      this.renderImages(); // 重新渲染图片
+
+      
+
+      new Notice(`已删除分类 "${category}"`);
+
+    }
+
+  }
+
+
+
+  private renderCategoryList(categoriesList: HTMLElement) {
+
+    // 清空现有分类列表
+
+    categoriesList.empty();
+
+    
+
+    // 重新添加所有分类
+
+    this.categories.forEach((category, index) => {
+
+      const li = this.createCategoryElement(categoriesList, category, category === this.currentCategory);
+
+      li.addEventListener('click', () => {
+
+        this.currentCategory = category;
+
+        // 移除所有活动状态
+
+        categoriesList.querySelectorAll('.category-item').forEach(item => {
+
+          item.removeClass('active');
+
+        });
+
+        // 添加当前活动状态
+
+        li.addClass('active');
+
+        this.renderImages();
+
+      });
+
+    });
+
+  }
+
+
+
+  private async openImageFile(path: string) {
+
+    try {
+
+      const file = this.app.vault.getAbstractFileByPath(path);
+
+      // 使用属性检测代替 instanceof TFile，防止在打包后出现 TFile 未定义的 ReferenceError
+      if (file && (file as any).path) {
+
+        const leaf = this.app.workspace.getLeaf(true);
+
+        await leaf.openFile(file as any);
+
+      } else {
+
+        new Notice(`找不到文件: ${path}`);
+
+      }
+
+    } catch (error) {
+
+      console.error('打开图片文件失败:', error);
+
+      new Notice(`无法打开文件: ${path}`);
+
+    }
+
+  }
+
 }

@@ -25,6 +25,7 @@ export interface ImageTaggingSettings {
   showInFileExplorer: boolean;  // 是否在文件浏览器中显示
   autoTagOnImport: boolean;     // 导入时自动添加标签
   enableGalleryView: boolean;   // 是否启用图库视图
+  scanFolderPath: string;       // 扫描指定文件夹的路径
 }
 
 // 默认设置
@@ -33,7 +34,8 @@ export const DEFAULT_SETTINGS: ImageTaggingSettings = {
   supportedFormats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'],
   showInFileExplorer: true,
   autoTagOnImport: false,
-  enableGalleryView: true
+  enableGalleryView: true,
+  scanFolderPath: ''  // 默认为空，用户需要手动设置
 };
 
 // 图片文件类型检查辅助函数
