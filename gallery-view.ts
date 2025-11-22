@@ -178,22 +178,31 @@ export class GalleryView extends ItemView {
     // 右侧主内容区
     const mainContent = contentContainer.createEl('div', { cls: 'gallery-main' });
     
-    // 工具栏
-    const toolbar = mainContent.createEl('div', { cls: 'gallery-toolbar' });
-    toolbar.createEl('h3', { text: '图片图库' });
-    
-    const toolbarControls = toolbar.createEl('div', { cls: 'toolbar-controls' });
-    
-    // 排序下拉菜单
-    const sortContainer = toolbarControls.createEl('div', { cls: 'sort-container' });
-    sortContainer.createEl('select', { 
-      cls: 'sort-select' 
-    }).innerHTML = `
-      <option value="name">按名称</option>
-      <option value="date">按日期</option>
-      <option value="size">按大小</option>
-      <option value="tags">按标签数</option>
-    `;
+    // 工具栏
+    const toolbar = mainContent.createEl('div', { cls: 'gallery-toolbar' });
+    toolbar.createEl('h3', { text: '图片图库' });
+    
+    const toolbarControls = toolbar.createEl('div', { cls: 'toolbar-controls' });
+    
+    // 排序下拉菜单
+    const sortContainer = toolbarControls.createEl('div', { cls: 'sort-container' });
+    sortContainer.createEl('select', { 
+      cls: 'sort-select' 
+    }).innerHTML = `
+      <option value="name">按名称</option>
+      <option value="date">按日期</option>
+      <option value="size">按大小</option>
+      <option value="tags">按标签数</option>
+    `;
+    
+    // 刷新按钮
+    const refreshButton = toolbarControls.createEl('button', {
+      cls: 'refresh-button',
+      text: '刷新'
+    });
+    refreshButton.addEventListener('click', async () => {
+      await this.refreshGallery();
+    });
     
     // 主要网格
     const gridContainer = mainContent.createEl('div', { cls: 'gallery-grid-container' });
@@ -225,18 +234,148 @@ export class GalleryView extends ItemView {
     }
   }
 
-  private imageGrid: HTMLElement;
-
-  private async refreshData() {
-    // 从插件实例获取最新数据
-    const plugin = (this.app as any).plugins.plugins['image-tagging-obsidian'];
-    if (plugin && plugin.imageDataManager) {
-      // 更新本地引用的数据管理器
-      this.imageDataManager = plugin.imageDataManager;
-    }
-    
-    // 重新加载并渲染数据
-    this.renderImages();
+  private imageGrid: HTMLElement;
+
+  private async refreshData() {
+    // 从插件实例获取最新数据
+    const plugin = (this.app as any).plugins.plugins['image-tagging-obsidian'];
+    if (plugin && plugin.imageDataManager) {
+      // 更新本地引用的数据管理器
+      this.imageDataManager = plugin.imageDataManager;
+    }
+    
+    // 重新加载并渲染数据
+    this.renderImages();
+  }
+
+  private async refreshGallery() {
+    // 从插件实例获取最新数据管理器
+    const plugin = (this.app as any).plugins.plugins['image-tagging-obsidian'];
+    if (plugin && plugin.imageDataManager) {
+      this.imageDataManager = plugin.imageDataManager;
+    }
+
+    // 清理无效图片数据（删除不存在的图片记录）
+    const removedCount = this.imageDataManager.cleanupInvalidImages(this.app);
+    
+    // 刷新图片数据（从文件系统重新获取所有图片信息）
+    await this.refreshImageDataFromVault();
+
+    // 重新渲染
+    this.renderImages();
+
+    // 显示刷新结果通知
+    new Notice(`图库已刷新，清理了 ${removedCount} 个无效图片记录`);
+  }
+
+  private async refreshImageDataFromVault() {
+    // 获取当前库中的所有文件
+    const allFiles = this.app.vault.getFiles();
+    
+    // 获取当前支持的图片格式
+    const supportedFormats = this.settings.supportedFormats || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'];
+    
+    // 获取当前已存储的图片数据
+    const currentImageData = this.imageDataManager.getAllImageData();
+    const currentImagePathMap = new Map(currentImageData.map(data => [data.path, data]));
+    
+    // 遍历所有文件，更新或添加图片数据
+    for (const file of allFiles) {
+      // 检查是否为支持的图片格式
+      if (supportedFormats.includes(file.extension.toLowerCase())) {
+        // 检查是否已存在该图片的记录
+        const existingData = currentImagePathMap.get(file.path);
+        if (existingData) {
+          // 如果文件已存在记录，检查是否需要更新（如文件被修改）
+          if (file.stat.mtime > existingData.lastModified) {
+            // 文件被修改，更新信息
+            const updatedData = await this.createImageDataFromFile(file, existingData.id);
+            this.imageDataManager.addImageData(updatedData);
+          }
+        } else {
+          // 文件不存在记录，添加新记录
+          const newData = await this.createImageDataFromFile(file);
+          this.imageDataManager.addImageData(newData);
+        }
+      }
+    }
+
+    // 保存数据到文件
+    if ((this.app as any).plugins.plugins['image-tagging-obsidian']) {
+      await (this.app as any).plugins.plugins['image-tagging-obsidian'].saveDataToFile();
+    }
+  }
+
+  private async createImageDataFromFile(file: any, id?: string): Promise<ImageData> {
+    // 如果没有提供ID，则生成一个新的ID
+    const imageId = id || this.generateId();
+    
+    // 获取文件信息
+    const stat = file.stat;
+    const path = file.path;
+    const name = file.basename;
+    const extension = file.extension;
+    const size = this.formatFileSize(stat.size);
+    const lastModified = stat.mtime;
+    
+    // 获取文件的完整路径用于获取分辨率等信息
+    let resolution = '未知';
+    let width = 0;
+    let height = 0;
+    
+    try {
+      // 获取图片分辨率信息
+      const fileUrl = this.app.vault.getResourcePath(file);
+      const img = new Image();
+      
+      // 创建一个Promise来等待图片加载完成
+      const loadImage = (src: string) => {
+        return new Promise((resolve, reject) => {
+          const tempImg = new Image();
+          tempImg.onload = () => resolve({ width: tempImg.width, height: tempImg.height });
+          tempImg.onerror = reject;
+          tempImg.src = src;
+        });
+      };
+      
+      // 注意：在Obsidian环境中直接加载图片可能受到限制，这里先设置为未知
+      // 可以在实际使用中通过其他方式获取分辨率信息
+    } catch (e) {
+      console.warn(`无法加载图片以获取分辨率信息: ${path}`, e);
+    }
+    
+    // 创建图片数据对象
+    const imageData: ImageData = {
+      id: imageId,
+      path: path,
+      title: name,
+      tags: [], // 新添加的图片默认没有标签
+      date: new Date().toISOString(),
+      size: size,
+      resolution: resolution,
+      format: extension.toUpperCase(),
+      description: '',
+      originalName: file.name,
+      lastModified: lastModified,
+      width: width,
+      height: height,
+      fileSize: stat.size
+    };
+
+    return imageData;
+  }
+
+  private generateId(): string {
+    // 生成一个唯一的ID
+    return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+  }
+
+  private formatFileSize(bytes: number): string {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   }
 
   private loadData() {

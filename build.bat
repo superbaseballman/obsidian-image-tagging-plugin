@@ -2,7 +2,7 @@
 echo 正在构建 Obsidian 图片标签插件...
 echo.
 
-cd /d "C:\Users\12053\Desktop\obsidian-eagle-master\obsidian-image-tagging-plugin"
+cd /d "C:\Users\12053\Desktop\Obsidian testbox\.obsidian\plugins\obsidian-image-tagging-plugin"
 
 echo 1. 安装依赖...
 npm install
