@@ -63,14 +63,50 @@ export default class ImageTaggingPlugin extends Plugin {
       }
     });
 
-    // 注册文件打开事件，用于显示图片信息
-    this.registerEvent(
-      this.app.workspace.on('file-open', (file) => {
-        if (file && this.isSupportedImageFile(file)) {
-          // 当打开支持的图片文件时，更新右侧信息面板
-          this.updateImageInfoPanel(file);
-        }
-      })
+    // 注册文件打开事件，用于显示图片信息
+    this.registerEvent(
+      this.app.workspace.on('file-open', (file) => {
+        if (file && this.isSupportedImageFile(file)) {
+          // 当打开支持的图片文件时，更新右侧信息面板
+          this.updateImageInfoPanel(file);
+        }
+      })
+    );
+
+    // 注册文件删除事件，用于清理失效的图片数据
+    this.registerEvent(
+      this.app.vault.on('delete', (file) => {
+        if (file && this.isSupportedImageFile(file as TFile)) {
+          // 检查是否有对应的图片数据
+          const imageData = this.imageDataManager.getImageDataByPath(file.path);
+          if (imageData) {
+            // 从数据管理器中移除对应的记录
+            this.imageDataManager.removeImageData(imageData.id);
+            // 保存更改到文件
+            this.saveDataToFile();
+            console.log(`已清理已删除图片的数据: ${file.path}`);
+          }
+        }
+      })
+    );
+
+    // 注册文件重命名事件，用于更新图片路径
+    this.registerEvent(
+      this.app.vault.on('rename', (file, oldPath) => {
+        if (file && this.isSupportedImageFile(file as TFile)) {
+          // 检查是否有对应的图片数据
+          const imageData = this.imageDataManager.getImageDataByPath(oldPath);
+          if (imageData) {
+            // 更新图片数据中的路径信息
+            imageData.path = file.path;
+            // 重新添加到数据管理器
+            this.imageDataManager.addImageData(imageData);
+            // 保存更改到文件
+            this.saveDataToFile();
+            console.log(`已更新重命名图片的路径: ${oldPath} -> ${file.path}`);
+          }
+        }
+      })
     );
   }
 
@@ -236,39 +272,95 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
     this.app.workspace.detachLeavesOfType(IMAGE_INFO_VIEW_TYPE);
   }
 
-  async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+  async loadSettings() {
+    // 加载保存的设置，如果不存在则使用默认设置
+    const loadedData = await this.loadData();
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
+    
+    // 确保jsonStoragePath不为空
+    if (!this.settings.jsonStoragePath) {
+      this.settings.jsonStoragePath = DEFAULT_SETTINGS.jsonStoragePath;
+    }
+  }
+
+  /**
+   * 确保文件路径的目录存在，如果不存在则创建
+   * @param filePath 文件路径
+   */
+  async ensureDirectoryExists(filePath: string) {
+    const dirPath = filePath.substring(0, filePath.lastIndexOf('/'));
+    if (dirPath && !(await this.app.vault.adapter.exists(dirPath))) {
+      // 递归创建目录
+      const pathParts = dirPath.split('/');
+      let currentPath = '';
+      
+      for (const part of pathParts) {
+        if (part) {  // 跳过空字符串（如路径开头的斜杠）
+          currentPath += (currentPath ? '/' : '') + part;
+          if (!(await this.app.vault.adapter.exists(currentPath))) {
+            await this.app.vault.adapter.mkdir(currentPath);
+            console.log(`创建目录: ${currentPath}`);
+          }
+        }
+      }
+    }
   }
 
   async saveSettings() {
     await this.saveData();
   }
 
-  async loadDataFromFile() {
-    try {
-      if (await this.app.vault.adapter.exists(this.settings.jsonStoragePath)) {
-        const jsonData = await this.app.vault.adapter.read(this.settings.jsonStoragePath);
-        this.imageDataManager.importFromJSON(jsonData);
-        new Notice('图片标签数据加载成功。');
-      }
-    } catch (error) {
-      console.error('加载图片标签数据失败:', error);
-      new Notice('加载图片标签数据失败，已初始化空数据。');
-      // 初始化空数据
-      this.imageDataManager = new ImageDataManager();
-    }
+  async loadDataFromFile() {
+    try {
+      // 确保路径有效且不为空
+      if (!this.settings.jsonStoragePath || this.settings.jsonStoragePath.trim() === '') {
+        this.settings.jsonStoragePath = DEFAULT_SETTINGS.jsonStoragePath;
+        console.warn('JSON存储路径为空，使用默认路径:', this.settings.jsonStoragePath);
+      }
+
+      if (await this.app.vault.adapter.exists(this.settings.jsonStoragePath)) {
+        const jsonData = await this.app.vault.adapter.read(this.settings.jsonStoragePath);
+        this.imageDataManager.importFromJSON(jsonData);
+        console.log('图片标签数据加载成功:', this.settings.jsonStoragePath);
+        new Notice('图片标签数据加载成功。');
+      } else {
+        console.log('JSON数据文件不存在，将创建新文件:', this.settings.jsonStoragePath);
+        // 确保目录存在
+        await this.ensureDirectoryExists(this.settings.jsonStoragePath);
+        // 文件不存在时，初始化空数据
+        this.imageDataManager = new ImageDataManager();
+      }
+    } catch (error) {
+      console.error('加载图片标签数据失败:', error);
+      console.error('尝试加载的路径:', this.settings.jsonStoragePath);
+      new Notice('加载图片标签数据失败，已初始化空数据。');
+      // 初始化空数据
+      this.imageDataManager = new ImageDataManager();
+    }
   }
 
-  async saveDataToFile() {
-    try {
-      const jsonData = this.imageDataManager.exportToJSON();
-      // 使用 Vault.write 代替 adapter.write 以便更好地兼容 Obsidian 环境
-      await this.app.vault.adapter.write(this.settings.jsonStoragePath, jsonData); 
-      // 注意：使用 adapter.write 避免了触发文件事件，是存储插件私有数据的好方法
-    } catch (error) {
-      console.error('保存图片标签数据失败:', error);
-      new Notice('保存图片标签数据失败');
-    }
+  async saveDataToFile() {
+    try {
+      // 确保路径有效且不为空
+      if (!this.settings.jsonStoragePath || this.settings.jsonStoragePath.trim() === '') {
+        this.settings.jsonStoragePath = DEFAULT_SETTINGS.jsonStoragePath;
+        console.warn('JSON存储路径为空，使用默认路径:', this.settings.jsonStoragePath);
+        await this.saveSettings(); // 保存修正后的设置
+      }
+
+      // 确保目录存在
+      await this.ensureDirectoryExists(this.settings.jsonStoragePath);
+
+      const jsonData = this.imageDataManager.exportToJSON();
+      // 使用 Vault.write 代替 adapter.write 以便更好地兼容 Obsidian 环境
+      await this.app.vault.adapter.write(this.settings.jsonStoragePath, jsonData); 
+      // 注意：使用 adapter.write 避免了触发文件事件，是存储插件私有数据的好方法
+      console.log('图片标签数据保存成功:', this.settings.jsonStoragePath);
+    } catch (error) {
+      console.error('保存图片标签数据失败:', error);
+      console.error('尝试保存的路径:', this.settings.jsonStoragePath);
+      new Notice('保存图片标签数据失败');
+    }
   }
 
   /**
@@ -362,13 +454,20 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
     }
   }
 
-  isSupportedImageFile(file: TFile): boolean {
-    const extension = file.extension ? file.extension.toLowerCase() : '';
-    // 使用 Set 查找性能更好，但考虑到格式列表不长，array.includes 也可接受
-    return this.settings.supportedFormats.includes(extension); 
-  }
-}
-
+  isSupportedImageFile(file: TFile): boolean {
+    const extension = file.extension ? file.extension.toLowerCase() : '';
+    // 使用 Set 查找性能更好，但考虑到格式列表不长，array.includes 也可接受
+    return this.settings.supportedFormats.includes(extension); 
+  }
+
+  // 清理失效的图片数据
+  async cleanupInvalidImages() {
+    const removedCount = this.imageDataManager.cleanupInvalidImages(this.app);
+    await this.saveDataToFile();
+    new Notice(`清理完成！移除了 ${removedCount} 个失效的图片数据记录。`);
+  }
+}
+
 class ImageTaggingSettingTab extends PluginSettingTab {
   plugin: ImageTaggingPlugin;
 
