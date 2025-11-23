@@ -20,17 +20,19 @@ export interface ImageData {
 
 // 插件设置接口
 export interface ImageTaggingSettings {
-  jsonStoragePath: string;      // JSON 存储路径
-  supportedFormats: string[];   // 支持的图片格式
-  showInFileExplorer: boolean;  // 是否在文件浏览器中显示
-  autoTagOnImport: boolean;     // 导入时自动添加标签
-  enableGalleryView: boolean;   // 是否启用图库视图
-  scanFolderPath: string;       // 扫描指定文件夹的路径
+  jsonStoragePath: string;
+  categories: string[];
+  supportedFormats: string[];
+  showInFileExplorer: boolean;
+  autoTagOnImport: boolean;
+  enableGalleryView: boolean;
+  scanFolderPath: string;
 }
 
 // 默认设置
 export const DEFAULT_SETTINGS: ImageTaggingSettings = {
   jsonStoragePath: '.obsidian/image-tags.json',
+  categories: ['All'],
   supportedFormats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'],
   showInFileExplorer: true,
   autoTagOnImport: false,
