@@ -23,3 +23,9 @@ optionalDependencies/
 # Obsidian开发相关
 *.excalidraw
 image tags.html
+
+# VS Code配置目录
+.vscode/
+
+# 数据文件
+data.json
