@@ -1,5 +1,6 @@
-import { ItemView, WorkspaceLeaf, TFile, Notice } from 'obsidian';
-import { ImageData, ImageDataManager } from './image-data-model';
+import { ItemView, WorkspaceLeaf, TFile, Notice } from 'obsidian';
+import { ImageData, ImageDataManager } from './image-data-model';
+import { getImageResolutionWithCache, getImageTaggingPlugin, getSafeImagePath } from './utils';
 
 // 右侧边栏视图类型ID
 export const IMAGE_INFO_VIEW_TYPE = 'image-info-view';
@@ -115,12 +116,12 @@ export class ImageView extends ItemView {
     
     // 图片预览
     const previewContainer = this.imageInfoContainer.createEl('div', { cls: 'image-preview-container' });
-    const img = previewContainer.createEl('img', {
-      cls: 'image-preview',
-      attr: {
-        src: this.getCorrectImagePath(imageData.path),
-        alt: imageData.title
-      }
+    const img = previewContainer.createEl('img', {
+      cls: 'image-preview',
+      attr: {
+        src: getSafeImagePath(this.app, imageData.path),
+        alt: imageData.title
+      }
     });
     
     // 图片基本信息
@@ -208,52 +209,7 @@ export class ImageView extends ItemView {
     });
   }
   
-  private getCorrectImagePath(path: string | undefined | null): string {
-    try {
-      // 首先检查路径是否为 undefined 或 null
-      if (!path) {
-        // 如果路径为空、undefined 或 null，返回占位符
-        return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWVlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlPC90ZXh0Pjwvc3ZnPg==';
-      }
-      
-      // 检查是否已经是 app:// 格式的 URL
-      if (path.startsWith('app://')) {
-        // 如果是 app:// 格式，直接使用它
-        return path;
-      }
-      
-      // 如果路径不包含完整路径（例如只包含文件名），尝试在 vault 中查找
-      if (!path.includes('/') && !path.includes('\\')) {
-        // 如果只有文件名，尝试在 vault 中查找匹配的文件
-        const files = this.app.vault.getFiles();
-        const matchingFile = files.find(file => file.name === path || file.basename + '.' + file.extension === path);
-        if (matchingFile) {
-          return this.app.vault.getResourcePath(matchingFile);
-        }
-      }
-      
-      // 检查文件是否存在再获取路径
-      const abstractFile = this.app.vault.getAbstractFileByPath(path);
-      if (!abstractFile) {
-        // 如果文件不存在，返回占位符
-        return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWVlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlPC90ZXh0Pjwvc3ZnPg==';
-      }
-
-      // 只有当 abstractFile 是 TFile（文件）时，才传入 getResourcePath
-      // 避免把 string/undefined 传给 getResourcePath
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore — Obsidian 类型库可能把 getResourcePath 的签名定义为接收 TFile
-      if ((abstractFile as any).path) {
-        return this.app.vault.getResourcePath(abstractFile as any);
-      }
-
-      return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWVlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlPC90ZXh0Pjwvc3ZnPg==';
-    } catch (e) {
-      // 如果 getResourcePath 失败，返回一个默认的占位符图像
-      console.warn(`无法获取图片路径: ${path}`, e);
-      return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWVlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlPC90ZXh0Pjwvc3ZnPg==';
-    }
-  }
+  
 
   private createTagElement(container: HTMLElement, tag: string, imageData: ImageData) {
     const tagEl = container.createEl('span', { cls: 'tag-item' });
@@ -310,44 +266,31 @@ export class ImageView extends ItemView {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   }
 
-  private async getImageResolution(file: TFile): Promise<string> {
-    return new Promise((resolve) => {
-      try {
-        const img = new Image();
-        // 使用 TFile 对象来获取资源 URL，避免传入 undefined/字符串到 getResourcePath
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        const url = this.app.vault.getResourcePath(file);
-        
-        img.onload = () => {
-          resolve(`${img.width}x${img.height}`);
-        };
-        
-        img.onerror = () => {
-          resolve('未知');
-        };
-        
-        img.src = url;
-      } catch (e) {
-        resolve('未知');
-      }
-    });
+  private async getImageResolution(file: TFile): Promise<string> {
+    try {
+      // 使用缓存的图片分辨率获取方法
+      const dimensions = await getImageResolutionWithCache(file, this.app);
+      if (dimensions) {
+        return dimensions.resolution;
+      }
+      return '未知';
+    } catch (e) {
+      console.warn(`无法获取图片分辨率: ${file.path}`, e);
+      return '未知';
+    }
   }
 
   private async openImageFile(path: string) {
-    try {
-      const file = this.app.vault.getAbstractFileByPath(path);
-      // 避免在运行时依赖 TFile 标识符（可能在打包时不可用），使用 path 属性判断
-      if (file && (file as any).path) {
-        // 在新标签页中打开图片文件
-        const leaf = this.app.workspace.getLeaf(true);
-        await leaf.openFile(file as any);
-      } else {
-        new Notice(`找不到文件: ${path}`);
-      }
-    } catch (error) {
-      console.error('打开图片文件失败:', error);
-      new Notice(`无法打开文件: ${path}`);
-    }
-  }
+    try {
+      const file = this.app.vault.getAbstractFileByPath(path);
+      if (file && file instanceof TFile) {
+        // 在新标签页中打开图片文件
+        const leaf = this.app.workspace.getLeaf(true);
+        await leaf.openFile(file);
+      } else {
+        new Notice(`找不到文件: ${path}`);
+      }
+    } catch (error) {
+  }
+}
 }

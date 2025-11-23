@@ -1,9 +1,10 @@
-import { App, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, Notice, Vault } from 'obsidian';
-import { ImageData, ImageTaggingSettings, DEFAULT_SETTINGS, ImageDataManager } from './image-data-model';
-import { ImageView, IMAGE_INFO_VIEW_TYPE } from './image-info-view';
-import { GalleryView, GALLERY_VIEW_TYPE } from './gallery-view';
-
-// 导入样式
+import { App, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, Notice, Vault } from 'obsidian';
+import { ImageData, ImageTaggingSettings, DEFAULT_SETTINGS, ImageDataManager } from './image-data-model';
+import { ImageView, IMAGE_INFO_VIEW_TYPE } from './image-info-view';
+import { GalleryView, GALLERY_VIEW_TYPE } from './gallery-view';
+import { getImageResolutionWithCache } from './utils';
+
+// 导入样式
 import './styles.css';
 
 export default class ImageTaggingPlugin extends Plugin {
@@ -193,60 +194,50 @@ this.registerEvent(
     }
   }
 
-  /**
-   * 从 TFile 对象创建默认的 ImageData 结构。
-   */
-  private async createDefaultImageData(file: TFile): Promise<ImageData> {
-    // 获取文件信息
-    const stat = file.stat;
-    const path = file.path;
-    const name = file.basename;
-    const extension = file.extension;
-    const size = this.formatFileSize(stat.size);
-    const lastModified = stat.mtime;
-    
-    let resolution = '未知';
-    let width = 0;
-    let height = 0;
-    
-    try {
-      // 尝试获取图片分辨率
-      const fileUrl = this.app.vault.getResourcePath(file);
-      const loadImage = (src: string): Promise<{width: number, height: number} | null> => {
-        return new Promise((resolve) => {
-          const tempImg = new Image();
-          tempImg.onload = () => resolve({ width: tempImg.width, height: tempImg.height });
-          tempImg.onerror = () => resolve(null);
-          tempImg.src = src;
-        });
-      };
-      
-      const dimensions = await loadImage(fileUrl);
-      if (dimensions) {
-        width = dimensions.width;
-        height = dimensions.height;
-        resolution = `${width}x${height}`;
-      }
-    } catch (e) {
-      console.warn(`无法获取图片分辨率: ${path}`, e);
-    }
-    
-    return {
-      id: `img_${Date.now()}_${path}`,
-      path: path,
-      title: name,
-      tags: [],
-      date: new Date().toISOString(),
-      size: size,
-      resolution: resolution,
-      format: extension.toUpperCase(),
-      description: '',
-      originalName: file.name,
-      lastModified: lastModified,
-      width: width,
-      height: height,
-      fileSize: stat.size
-    };
+  /**
+   * 从 TFile 对象创建默认的 ImageData 结构。
+   */
+  private async createDefaultImageData(file: TFile): Promise<ImageData> {
+    // 获取文件信息
+    const stat = file.stat;
+    const path = file.path;
+    const name = file.basename;
+    const extension = file.extension;
+    const size = this.formatFileSize(stat.size);
+    const lastModified = stat.mtime;
+    
+    let resolution = '未知';
+    let width = 0;
+    let height = 0;
+    
+    try {
+      // 使用缓存的图片分辨率获取方法
+      const dimensions = await getImageResolutionWithCache(file, this.app);
+      if (dimensions) {
+        width = dimensions.width;
+        height = dimensions.height;
+        resolution = dimensions.resolution;
+      }
+    } catch (e) {
+      console.warn(`无法获取图片分辨率: ${path}`, e);
+    }
+    
+    return {
+      id: `img_${Date.now()}_${path}`,
+      path: path,
+      title: name,
+      tags: [],
+      date: new Date().toISOString(),
+      size: size,
+      resolution: resolution,
+      format: extension.toUpperCase(),
+      description: '',
+      originalName: file.name,
+      lastModified: lastModified,
+      width: width,
+      height: height,
+      fileSize: stat.size
+    };
   }
 
   /**
@@ -304,11 +295,11 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
         return null;
     }
     
-    // 1. 尝试使用完整的/绝对路径或当前 Obsidian API 可以直接解析的路径
-    let file = this.app.vault.getAbstractFileByPath(cleanPath);
-    // 运行时可能无法使用 TFile 符号（打包/类型移除），使用更稳健的检查
-    if (file && (file as any).path) {
-      return file as any;
+    // 1. 尝试使用完整的/绝对路径或当前 Obsidian API 可以直接解析的路径
+    let file = this.app.vault.getAbstractFileByPath(cleanPath);
+    // 检查文件是否为 TFile 类型（即实际的文件，而不是文件夹）
+    if (file && file instanceof TFile) {
+      return file;
     }
 
     // 2. 处理相对路径 (./ 或 ../)
@@ -318,11 +309,11 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
         // 虽然它主要用于 Wikilink，但对于路径解析在内部也是有效的辅助手段
         const resolvedPath = this.app.metadataCache.getFirstLinkpathMatch(cleanPath, activeFile.path);
         
-        if (resolvedPath) {
-            file = this.app.vault.getAbstractFileByPath(resolvedPath);
-            if (file && (file as any).path) {
-              return file as any;
-            }
+        if (resolvedPath) {
+            file = this.app.vault.getAbstractFileByPath(resolvedPath);
+            if (file && file instanceof TFile) {
+              return file;
+            }
         }
     } else {
          // 如果 activeFile 在根目录，且路径不是绝对路径，

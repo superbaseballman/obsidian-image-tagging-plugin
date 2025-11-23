@@ -46,13 +46,21 @@ export function isSupportedImageFile(file: TFile, settings: ImageTaggingSettings
   return settings.supportedFormats.includes(extension);
 }
 
-// 数据管理器类
-export class ImageDataManager {
-  private data: Map<string, ImageData> = new Map();
+// 数据管理器类
+export class ImageDataManager {
+  private data: Map<string, ImageData> = new Map();
+  private pathToIdMap: Map<string, string> = new Map(); // 添加路径到ID的映射以提高查找效率
   
-  // 添加或更新图片数据
-  addImageData(imageData: ImageData): void {
-    this.data.set(imageData.id, imageData);
+  // 添加或更新图片数据
+  addImageData(imageData: ImageData): void {
+    // 如果之前存在相同路径的数据，先删除旧的路径映射
+    const existingData = this.data.get(imageData.id);
+    if (existingData && existingData.path !== imageData.path) {
+      this.pathToIdMap.delete(existingData.path);
+    }
+    
+    this.data.set(imageData.id, imageData);
+    this.pathToIdMap.set(imageData.path, imageData.id); // 添加路径到ID的映射
   }
   
   // 获取图片数据
@@ -65,19 +73,22 @@ export class ImageDataManager {
     return Array.from(this.data.values());
   }
   
-  // 删除图片数据
-  removeImageData(id: string): boolean {
-    return this.data.delete(id);
+  // 删除图片数据
+  removeImageData(id: string): boolean {
+    const imageData = this.data.get(id);
+    if (imageData) {
+      this.pathToIdMap.delete(imageData.path); // 同时删除路径映射
+    }
+    return this.data.delete(id);
   }
   
-  // 根据路径获取图片数据
-  getImageDataByPath(path: string): ImageData | undefined {
-    for (const imageData of this.data.values()) {
-      if (imageData.path === path) {
-        return imageData;
-      }
-    }
-    return undefined;
+  // 根据路径获取图片数据
+  getImageDataByPath(path: string): ImageData | undefined {
+    const id = this.pathToIdMap.get(path);
+    if (id) {
+      return this.data.get(id);
+    }
+    return undefined;
   }
   
   // 搜索包含特定标签的图片
@@ -113,23 +124,25 @@ export class ImageDataManager {
       .slice(0, limit);
   }
   
-  // 从 JSON 导入数据
-  importFromJSON(jsonData: string): void {
-    try {
-      const parsed = JSON.parse(jsonData);
-      if (Array.isArray(parsed)) {
-        this.data.clear();
-        for (const item of parsed) {
-          // 验证数据结构
-          if (this.isValidImageData(item)) {
-            this.data.set(item.id, item);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('导入 JSON 数据失败:', error);
-      throw error;
-    }
+  // 从 JSON 导入数据
+  importFromJSON(jsonData: string): void {
+    try {
+      const parsed = JSON.parse(jsonData);
+      if (Array.isArray(parsed)) {
+        this.data.clear();
+        this.pathToIdMap.clear(); // 清空路径映射
+        for (const item of parsed) {
+          // 验证数据结构
+          if (this.isValidImageData(item)) {
+            this.data.set(item.id, item);
+            this.pathToIdMap.set(item.path, item.id); // 添加路径映射
+          }
+        }
+      }
+    } catch (error) {
+      console.error('导入 JSON 数据失败:', error);
+      throw error;
+    }
   }
   
   // 导出到 JSON
@@ -155,6 +168,7 @@ export class ImageDataManager {
   public cleanupInvalidImages(app: any, scanFolderPath?: string): number {
     let removedCount = 0;
     const validData = new Map<string, ImageData>();
+    const validPathToIdMap = new Map<string, string>();
 
     for (const [id, imageData] of this.data.entries()) {
       // 检查文件是否存在
@@ -174,9 +188,10 @@ export class ImageDataManager {
         isInScanFolder = normalizedImagePath.startsWith(normalizedScanPath);
       }
 
-      if (file && (file as any).path && isInScanFolder) {
+      if (file && file instanceof TFile && isInScanFolder) {
         // 文件存在且在扫描路径内，保留数据
         validData.set(id, imageData);
+        validPathToIdMap.set(imageData.path, id); // 同时保留路径映射
       } else {
         // 文件不存在或不在扫描路径内，跳过（相当于删除）
         removedCount++;
@@ -186,6 +201,7 @@ export class ImageDataManager {
 
     // 更新数据存储
     this.data = validData;
+    this.pathToIdMap = validPathToIdMap;
     return removedCount;
   }
 }

@@ -1,5 +1,6 @@
-import { ItemView, WorkspaceLeaf, Notice } from 'obsidian';
+import { ItemView, WorkspaceLeaf, Notice, TFile, App } from 'obsidian';
 import { ImageData, ImageTaggingSettings, ImageDataManager } from './image-data-model';
+import { getImageResolutionWithCache, getImageTaggingPlugin, getSafeImagePath } from './utils';
 
 // 图库视图类型ID
 export const GALLERY_VIEW_TYPE = 'image-gallery-view';
@@ -240,7 +241,7 @@ export class GalleryView extends ItemView {
 
   private async refreshData() {
     // 从插件实例获取最新数据
-    const plugin = (this.app as any).plugins.plugins['image-tagging-obsidian'];
+    const plugin = getImageTaggingPlugin(this.app);
     if (plugin && plugin.imageDataManager) {
       // 更新本地引用的数据管理器
       this.imageDataManager = plugin.imageDataManager;
@@ -252,7 +253,7 @@ export class GalleryView extends ItemView {
 
   private async refreshGallery() {
     // 从插件实例获取最新数据管理器
-    const plugin = (this.app as any).plugins.plugins['image-tagging-obsidian'];
+    const plugin = getImageTaggingPlugin(this.app);
     if (plugin && plugin.imageDataManager) {
       this.imageDataManager = plugin.imageDataManager;
     }
@@ -272,7 +273,7 @@ export class GalleryView extends ItemView {
 
   private async scanImagesBasedOnSettings() {
     // 获取插件实例
-    const plugin = (this.app as any).plugins.plugins['image-tagging-obsidian'];
+    const plugin = getImageTaggingPlugin(this.app);
     if (!plugin) return;
 
     new Notice('开始扫描图片文件...');
@@ -304,7 +305,7 @@ export class GalleryView extends ItemView {
       }
     }
     
-    if (imageCount > 0) {
+    if (imageCount > 0 && plugin) {
       await plugin.saveDataToFile();
     }
     new Notice(`扫描完成！新增了 ${imageCount} 个图片记录`);
@@ -325,41 +326,11 @@ export class GalleryView extends ItemView {
     return normalizedFilePath.startsWith(folderPath);
   }
 
-  private async refreshImageDataFromVault() {
-    // 获取当前库中的所有文件
-    const allFiles = this.app.vault.getFiles();
-    
-    // 获取当前支持的图片格式
-    const supportedFormats = this.settings.supportedFormats || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'];
-    
-    // 获取当前已存储的图片数据
-    const currentImageData = this.imageDataManager.getAllImageData();
-    const currentImagePathMap = new Map(currentImageData.map(data => [data.path, data]));
-    
-    // 遍历所有文件，更新或添加图片数据
-    for (const file of allFiles) {
-      // 检查是否为支持的图片格式
-      if (supportedFormats.includes(file.extension.toLowerCase())) {
-        // 检查是否已存在该图片的记录
-        const existingData = currentImagePathMap.get(file.path);
-        if (existingData) {
-          // 如果文件已存在记录，检查是否需要更新（如文件被修改）
-          if (file.stat.mtime > existingData.lastModified) {
-            // 文件被修改，更新信息
-            const updatedData = await this.createImageDataFromFile(file, existingData.id);
-            this.imageDataManager.addImageData(updatedData);
-          }
-        } else {
-          // 文件不存在记录，添加新记录
-          const newData = await this.createImageDataFromFile(file);
-          this.imageDataManager.addImageData(newData);
-        }
-      }
-    }
-
+  private async saveDataToFile() {
     // 保存数据到文件
-    if ((this.app as any).plugins.plugins['image-tagging-obsidian']) {
-      await (this.app as any).plugins.plugins['image-tagging-obsidian'].saveDataToFile();
+    const plugin = getImageTaggingPlugin(this.app);
+    if (plugin) {
+      await plugin.saveDataToFile();
     }
   }
 
@@ -375,34 +346,20 @@ export class GalleryView extends ItemView {
     const size = this.formatFileSize(stat.size);
     const lastModified = stat.mtime;
     
-    // 获取文件的完整路径用于获取分辨率等信息
     let resolution = '未知';
     let width = 0;
     let height = 0;
     
     try {
-      // 获取图片分辨率信息
-      const fileUrl = this.app.vault.getResourcePath(file);
-      
-      // 创建一个Promise来等待图片加载完成
-      const loadImage = (src: string): Promise<{width: number, height: number} | null> => {
-        return new Promise((resolve) => {
-          const tempImg = new Image();
-          tempImg.onload = () => resolve({ width: tempImg.width, height: tempImg.height });
-          tempImg.onerror = () => resolve(null);
-          tempImg.src = src;
-        });
-      };
-      
-      // 实际调用loadImage函数并等待结果
-      const dimensions = await loadImage(fileUrl);
+      // 使用缓存的图片分辨率获取方法
+      const dimensions = await getImageResolutionWithCache(file, this.app);
       if (dimensions) {
         width = dimensions.width;
         height = dimensions.height;
-        resolution = `${width}x${height}`;
+        resolution = dimensions.resolution;
       }
     } catch (e) {
-      console.warn(`无法加载图片以获取分辨率信息: ${path}`, e);
+      console.warn(`无法获取图片分辨率: ${path}`, e);
     }
     
     // 创建图片数据对象
@@ -516,7 +473,7 @@ export class GalleryView extends ItemView {
       }
       
       // 使用安全的图片路径获取方法
-      const imagePath = this.getSafeImagePath(image.path);
+      const imagePath = getSafeImagePath(this.app, image.path);
       
       imageCard.innerHTML = `
 
@@ -588,51 +545,7 @@ export class GalleryView extends ItemView {
     this.updatePopularTags();
   }
   
-  private getSafeImagePath(path: string | undefined | null): string {
-    try {
-      // 首先检查路径是否为 undefined 或 null
-      if (!path) {
-        // 如果路径为空、undefined 或 null，返回占位符
-        return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWVlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlPC90ZXh0Pjwvc3ZnPg==';
-      }
-      
-      // 检查是否已经是 app:// 格式的 URL
-      if (path.startsWith('app://')) {
-        // 如果是 app:// 格式，直接使用它
-        return path;
-      }
-      
-      // 如果路径不包含完整路径（例如只包含文件名），尝试在 vault 中查找
-      if (!path.includes('/') && !path.includes('\\')) {
-        // 如果只有文件名，尝试在 vault 中查找匹配的文件
-        const files = this.app.vault.getFiles();
-        const matchingFile = files.find(file => file.name === path || file.basename + '.' + file.extension === path);
-        if (matchingFile) {
-          return this.app.vault.getResourcePath(matchingFile);
-        }
-      }
-      
-      // 检查文件是否存在再获取路径
-      const abstractFile = this.app.vault.getAbstractFileByPath(path);
-      if (!abstractFile) {
-        // 如果文件不存在，返回占位符
-        return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWVlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlPC90ZXh0Pjwvc3ZnPg==';
-      }
-
-      // 只有当 abstractFile 是文件类型时，传入 getResourcePath
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      if ((abstractFile as any).path) {
-        return this.app.vault.getResourcePath(abstractFile as any);
-      }
-
-      return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWVlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlPC90ZXh0Pjwvc3ZnPg==';
-    } catch (e) {
-      // 如果 getResourcePath 失败，返回一个默认的占位符图像
-      console.warn(`无法获取图片路径: ${path}`, e);
-      return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWVlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlPC90ZXh0Pjwvc3ZnPg==';
-    }
-  }
+  
 
   private getTagColorIndex(tag: string): number {
     let hash = 0;
@@ -707,8 +620,8 @@ export class GalleryView extends ItemView {
     // 创建模态框显示图片详情
     const modal = this.containerEl.createEl('div', { cls: 'image-detail-modal' });
     
-    // 使用安全的图片路径
-    const imagePath = this.getSafeImagePath(image.path);
+    // 使用安全的图片路径
+    const imagePath = getSafeImagePath(this.app, image.path);
     
     modal.innerHTML = `
       <div class="modal-backdrop"></div>
@@ -862,7 +775,7 @@ export class GalleryView extends ItemView {
 
       // 保存到文件
 
-      const plugin = (this.app as any).plugins.plugins['image-tagging-obsidian'];
+      const plugin = getImageTaggingPlugin(this.app);
 
       if (plugin) {
 
@@ -1018,7 +931,7 @@ export class GalleryView extends ItemView {
   private async saveCategories() {
     try {
       // 获取插件实例
-      const plugin = (this.app as any).plugins.plugins['image-tagging-obsidian'];
+      const plugin = getImageTaggingPlugin(this.app);
       if (plugin) {
         // 更新插件设置中的分类
         plugin.settings.categories = this.categories;
@@ -1027,7 +940,6 @@ export class GalleryView extends ItemView {
       }
     } catch (error) {
       console.error('保存分类失败:', error);
-      new Notice('保存分类失败');
     }
   }
 
@@ -1057,12 +969,11 @@ export class GalleryView extends ItemView {
 
       const file = this.app.vault.getAbstractFileByPath(path);
 
-      // 使用属性检测代替 instanceof TFile，防止在打包后出现 TFile 未定义的 ReferenceError
-      if (file && (file as any).path) {
+      if (file && file instanceof TFile) {
 
         const leaf = this.app.workspace.getLeaf(true);
 
-        await leaf.openFile(file as any);
+        await leaf.openFile(file);
 
       } else {
 
@@ -1079,5 +990,4 @@ export class GalleryView extends ItemView {
     }
 
   }
-
 }
