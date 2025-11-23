@@ -324,12 +324,12 @@ export class ImageView extends ItemView {
         };
         
         img.onerror = () => {
-          resolve('无法获取');
+          resolve('未知');
         };
         
         img.src = url;
       } catch (e) {
-        resolve('无法获取');
+        resolve('未知');
       }
     });
   }

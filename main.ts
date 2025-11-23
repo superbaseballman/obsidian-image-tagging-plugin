@@ -196,22 +196,56 @@ this.registerEvent(
   /**
    * 从 TFile 对象创建默认的 ImageData 结构。
    */
-  private createDefaultImageData(file: TFile): ImageData {
-    // 确保路径有效
-    const safePath = file.path || file.name || '';
+  private async createDefaultImageData(file: TFile): Promise<ImageData> {
+    // 获取文件信息
+    const stat = file.stat;
+    const path = file.path;
+    const name = file.basename;
+    const extension = file.extension;
+    const size = this.formatFileSize(stat.size);
+    const lastModified = stat.mtime;
+    
+    let resolution = '未知';
+    let width = 0;
+    let height = 0;
+    
+    try {
+      // 尝试获取图片分辨率
+      const fileUrl = this.app.vault.getResourcePath(file);
+      const loadImage = (src: string): Promise<{width: number, height: number} | null> => {
+        return new Promise((resolve) => {
+          const tempImg = new Image();
+          tempImg.onload = () => resolve({ width: tempImg.width, height: tempImg.height });
+          tempImg.onerror = () => resolve(null);
+          tempImg.src = src;
+        });
+      };
+      
+      const dimensions = await loadImage(fileUrl);
+      if (dimensions) {
+        width = dimensions.width;
+        height = dimensions.height;
+        resolution = `${width}x${height}`;
+      }
+    } catch (e) {
+      console.warn(`无法获取图片分辨率: ${path}`, e);
+    }
+    
     return {
-      id: `img_${Date.now()}_${safePath}`,
-      path: safePath,
-      title: file.basename,
+      id: `img_${Date.now()}_${path}`,
+      path: path,
+      title: name,
       tags: [],
       date: new Date().toISOString(),
-      size: this.formatFileSize(file.size),
-      fileSize: file.size, // 添加原始字节大小
-      resolution: '未知', // 需要额外的库才能在后台获取分辨率
-      format: file.extension.toUpperCase(),
+      size: size,
+      resolution: resolution,
+      format: extension.toUpperCase(),
       description: '',
       originalName: file.name,
-      lastModified: file.stat.mtime
+      lastModified: lastModified,
+      width: width,
+      height: height,
+      fileSize: stat.size
     };
   }
 

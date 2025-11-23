@@ -328,20 +328,24 @@ export class GalleryView extends ItemView {
     try {
       // 获取图片分辨率信息
       const fileUrl = this.app.vault.getResourcePath(file);
-      const img = new Image();
       
       // 创建一个Promise来等待图片加载完成
-      const loadImage = (src: string) => {
-        return new Promise((resolve, reject) => {
+      const loadImage = (src: string): Promise<{width: number, height: number} | null> => {
+        return new Promise((resolve) => {
           const tempImg = new Image();
           tempImg.onload = () => resolve({ width: tempImg.width, height: tempImg.height });
-          tempImg.onerror = reject;
+          tempImg.onerror = () => resolve(null);
           tempImg.src = src;
         });
       };
       
-      // 注意：在Obsidian环境中直接加载图片可能受到限制，这里先设置为未知
-      // 可以在实际使用中通过其他方式获取分辨率信息
+      // 实际调用loadImage函数并等待结果
+      const dimensions = await loadImage(fileUrl);
+      if (dimensions) {
+        width = dimensions.width;
+        height = dimensions.height;
+        resolution = `${width}x${height}`;
+      }
     } catch (e) {
       console.warn(`无法加载图片以获取分辨率信息: ${path}`, e);
     }
