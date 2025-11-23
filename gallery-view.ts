@@ -257,17 +257,72 @@ export class GalleryView extends ItemView {
       this.imageDataManager = plugin.imageDataManager;
     }
 
-    // 清理无效图片数据（删除不存在的图片记录）
-    const removedCount = this.imageDataManager.cleanupInvalidImages(this.app);
+    // 清理无效图片数据（删除不存在的或不在指定扫描路径内的图片记录）
+    const removedCount = this.imageDataManager.cleanupInvalidImages(this.app, this.settings.scanFolderPath);
     
-    // 刷新图片数据（从文件系统重新获取所有图片信息）
-    await this.refreshImageDataFromVault();
+    // 刷新图片数据（根据设置扫描图片）
+    await this.scanImagesBasedOnSettings();
 
     // 重新渲染
     this.renderImages();
 
     // 显示刷新结果通知
     new Notice(`图库已刷新，清理了 ${removedCount} 个无效图片记录`);
+  }
+
+  private async scanImagesBasedOnSettings() {
+    // 获取插件实例
+    const plugin = (this.app as any).plugins.plugins['image-tagging-obsidian'];
+    if (!plugin) return;
+
+    new Notice('开始扫描图片文件...');
+    
+    // 获取所有文件
+    let allFiles = this.app.vault.getFiles();
+    
+    // 如果设置了扫描文件夹路径，则只扫描该文件夹中的文件
+    if (this.settings.scanFolderPath && this.settings.scanFolderPath.trim() !== '') {
+      const folderPath = this.normalizePath(this.settings.scanFolderPath);
+      allFiles = allFiles.filter(file => this.isFileInFolder(file.path, folderPath));
+    }
+    
+    let imageCount = 0;
+    
+    // 获取当前支持的图片格式
+    const supportedFormats = this.settings.supportedFormats || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'];
+    
+    for (const file of allFiles) {
+      // 检查是否为支持的图片格式
+      if (supportedFormats.includes(file.extension.toLowerCase())) {
+        const existingData = this.imageDataManager.getImageDataByPath(file.path);
+        if (!existingData) {
+          // 如果不存在，则创建默认数据
+          const newData = await this.createImageDataFromFile(file);
+          this.imageDataManager.addImageData(newData);
+          imageCount++;
+        }
+      }
+    }
+    
+    if (imageCount > 0) {
+      await plugin.saveDataToFile();
+    }
+    new Notice(`扫描完成！新增了 ${imageCount} 个图片记录`);
+  }
+
+  private normalizePath(path: string): string {
+    // 标准化路径，确保以 '/' 结尾以便正确匹配
+    let normalized = path.replace(/\\/g, '/');
+    if (!normalized.endsWith('/')) {
+      normalized += '/';
+    }
+    return normalized;
+  }
+
+  private isFileInFolder(filePath: string, folderPath: string): boolean {
+    // 检查文件是否在指定文件夹中
+    const normalizedFilePath = filePath.replace(/\\/g, '/');
+    return normalizedFilePath.startsWith(folderPath);
   }
 
   private async refreshImageDataFromVault() {

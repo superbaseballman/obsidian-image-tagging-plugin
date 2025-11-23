@@ -531,8 +531,8 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
     
     // 如果设置了扫描文件夹路径，则只扫描该文件夹中的文件
     if (this.settings.scanFolderPath && this.settings.scanFolderPath.trim() !== '') {
-      const folderPath = this.settings.scanFolderPath;
-      allFiles = allFiles.filter(file => file.path.startsWith(folderPath));
+      const folderPath = this.normalizePath(this.settings.scanFolderPath);
+      allFiles = allFiles.filter(file => this.isFileInFolder(file.path, folderPath));
     }
     
     let imageCount = 0;
@@ -542,12 +542,7 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
         const existingData = this.imageDataManager.getImageDataByPath(file.path);
         if (!existingData) {
           // 如果不存在，则创建默认数据
-          const imageData = this.createDefaultImageData(file);
-          
-          // 尝试获取图片尺寸 - 备注：此操作在浏览器环境中需要创建 Image 对象，
-          // 且通常无法在后台命令中同步完成，因此分辨率仍设为未知
-          imageData.resolution = '未知'; 
-          
+          const imageData = await this.createDefaultImageData(file);
           this.imageDataManager.addImageData(imageData);
           imageCount++;
         }
@@ -558,6 +553,21 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
       await this.saveDataToFile();
     }
     new Notice(`扫描完成！新增了 ${imageCount} 个图片记录`);
+  }
+
+  private normalizePath(path: string): string {
+    // 标准化路径，确保以 '/' 结尾以便正确匹配
+    let normalized = path.replace(/\\/g, '/');
+    if (!normalized.endsWith('/')) {
+      normalized += '/';
+    }
+    return normalized;
+  }
+
+  private isFileInFolder(filePath: string, folderPath: string): boolean {
+    // 检查文件是否在指定文件夹中
+    const normalizedFilePath = filePath.replace(/\\/g, '/');
+    return normalizedFilePath.startsWith(folderPath);
   }
 
   private formatFileSize(bytes: number): string {
@@ -628,7 +638,7 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
   async cleanupInvalidImages() {
 
-    const removedCount = this.imageDataManager.cleanupInvalidImages(this.app);
+    const removedCount = this.imageDataManager.cleanupInvalidImages(this.app, this.settings.scanFolderPath);
 
     await this.saveDataToFile();
 

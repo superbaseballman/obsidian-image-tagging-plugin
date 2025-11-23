@@ -152,20 +152,35 @@ export class ImageDataManager {
   }
 
   // 清理失效的图片数据
-  public cleanupInvalidImages(app: any): number {
+  public cleanupInvalidImages(app: any, scanFolderPath?: string): number {
     let removedCount = 0;
     const validData = new Map<string, ImageData>();
 
     for (const [id, imageData] of this.data.entries()) {
       // 检查文件是否存在
       const file = app.vault.getAbstractFileByPath(imageData.path);
-      if (file && (file as any).path) {
-        // 文件存在，保留数据
+      
+      // 检查是否在指定的扫描路径内（如果设置了scanFolderPath）
+      let isInScanFolder = true;
+      if (scanFolderPath && scanFolderPath.trim() !== '') {
+        // 标准化路径以确保正确匹配
+        let normalizedScanPath = scanFolderPath.replace(/\\/g, '/');
+        if (!normalizedScanPath.endsWith('/')) {
+          normalizedScanPath += '/';
+        }
+        
+        // 检查图片路径是否在扫描路径内
+        const normalizedImagePath = imageData.path.replace(/\\/g, '/');
+        isInScanFolder = normalizedImagePath.startsWith(normalizedScanPath);
+      }
+
+      if (file && (file as any).path && isInScanFolder) {
+        // 文件存在且在扫描路径内，保留数据
         validData.set(id, imageData);
       } else {
-        // 文件不存在，跳过（相当于删除）
+        // 文件不存在或不在扫描路径内，跳过（相当于删除）
         removedCount++;
-        console.log(`清理失效图片数据: ${imageData.path}`);
+        console.log(`清理图片数据: ${imageData.path}`);
       }
     }
 
