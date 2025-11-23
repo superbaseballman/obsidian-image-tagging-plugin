@@ -32,7 +32,7 @@ export interface ImageTaggingSettings {
 // 默认设置
 export const DEFAULT_SETTINGS: ImageTaggingSettings = {
   jsonStoragePath: '.obsidian/image-tags.json',
-  categories: ['All'],
+  categories: ['全部图片', '风景', '人物', '建筑', '美食', '植物', '动物', '艺术'],
   supportedFormats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'],
   showInFileExplorer: true,
   autoTagOnImport: false,
