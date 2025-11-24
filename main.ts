@@ -1,10 +1,10 @@
-import { App, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, Notice, Vault } from 'obsidian';
-import { ImageData, ImageTaggingSettings, DEFAULT_SETTINGS, ImageDataManager } from './image-data-model';
-import { ImageView, IMAGE_INFO_VIEW_TYPE } from './image-info-view';
-import { GalleryView, GALLERY_VIEW_TYPE } from './gallery-view';
-import { getImageResolutionWithCache } from './utils';
-
-// 导入样式
+import { App, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, Notice, Vault } from 'obsidian';
+import { ImageData, ImageTaggingSettings, DEFAULT_SETTINGS, ImageDataManager } from './image-data-model';
+import { ImageView, IMAGE_INFO_VIEW_TYPE } from './image-info-view';
+import { GalleryView, GALLERY_VIEW_TYPE } from './gallery-view';
+import { getImageResolutionWithCache } from './utils';
+
+// 导入样式
 import './styles.css';
 
 export default class ImageTaggingPlugin extends Plugin {
@@ -28,7 +28,7 @@ export default class ImageTaggingPlugin extends Plugin {
     );
     this.registerView(
       IMAGE_INFO_VIEW_TYPE,
-      (leaf) => new ImageView(leaf, this.imageDataManager)
+      (leaf) => new ImageView(leaf, this.imageDataManager, this.settings)
     );
 
     // 添加命令
@@ -65,21 +65,12 @@ export default class ImageTaggingPlugin extends Plugin {
     });
 
     // 注册文件打开事件，用于显示图片信息
-
     this.registerEvent(
-
       this.app.workspace.on('file-open', (file) => {
-
-        if (file && this.isSupportedImageFile(file)) {
-
-          // 当打开支持的图片文件时，更新右侧信息面板
-
-          this.updateImageInfoPanel(file);
-
-        }
-
+        // 当打开文件时，更新右侧信息面板
+        // ImageView内部会检查是否为支持的图片文件
+        this.updateImageInfoPanel(file);
       })
-
     );
 
 
@@ -194,50 +185,106 @@ this.registerEvent(
     }
   }
 
-  /**
-   * 从 TFile 对象创建默认的 ImageData 结构。
-   */
-  private async createDefaultImageData(file: TFile): Promise<ImageData> {
-    // 获取文件信息
-    const stat = file.stat;
-    const path = file.path;
-    const name = file.basename;
-    const extension = file.extension;
-    const size = this.formatFileSize(stat.size);
-    const lastModified = stat.mtime;
-    
-    let resolution = '未知';
-    let width = 0;
-    let height = 0;
-    
-    try {
-      // 使用缓存的图片分辨率获取方法
-      const dimensions = await getImageResolutionWithCache(file, this.app);
-      if (dimensions) {
-        width = dimensions.width;
-        height = dimensions.height;
-        resolution = dimensions.resolution;
-      }
-    } catch (e) {
-      console.warn(`无法获取图片分辨率: ${path}`, e);
-    }
-    
-    return {
-      id: `img_${Date.now()}_${path}`,
-      path: path,
-      title: name,
-      tags: [],
-      date: new Date().toISOString(),
-      size: size,
-      resolution: resolution,
-      format: extension.toUpperCase(),
-      description: '',
-      originalName: file.name,
-      lastModified: lastModified,
-      width: width,
-      height: height,
-      fileSize: stat.size
-    };
+  /**
+
+   * 从 TFile 对象创建默认的 ImageData 结构。
+
+   */
+
+  private async createDefaultImageData(file: TFile): Promise<ImageData> {
+
+    // 获取文件信息
+
+    const stat = file.stat;
+
+    const path = file.path;
+
+    const name = file.basename;
+
+    const extension = file.extension;
+
+    const size = this.formatFileSize(stat.size);
+
+    const lastModified = stat.mtime;
+
+    
+
+    let resolution = '未知';
+
+    let width = 0;
+
+    let height = 0;
+
+    
+
+    try {
+
+      // 使用缓存的图片分辨率获取方法
+
+      const dimensions = await getImageResolutionWithCache(file, this.app);
+
+      if (dimensions) {
+
+        width = dimensions.width;
+
+        height = dimensions.height;
+
+        resolution = dimensions.resolution;
+
+      }
+
+    } catch (e) {
+
+      console.warn(`无法获取图片分辨率: ${path}`, e);
+
+    }
+
+    
+
+    // 根据设置确定标签
+    let tags: string[] = [];
+    if (this.settings.autoTagOnImport && this.settings.autoTagOnImportValue) {
+      // 如果启用了自动标签功能且有自定义标签值，则使用这些标签
+      tags = this.settings.autoTagOnImportValue
+        .split(',')
+        .map(tag => tag.trim())
+        .filter(tag => tag.length > 0);
+    }
+
+    
+
+    return {
+
+      id: `img_${Date.now()}_${path}`,
+
+      path: path,
+
+      title: name,
+
+      tags: tags,
+
+      date: new Date().toISOString(),
+
+      size: size,
+
+      resolution: resolution,
+
+      format: extension.toUpperCase(),
+
+      description: '',
+
+      originalName: file.name,
+
+      lastModified: lastModified,
+
+      width: width,
+
+      height: height,
+
+      fileSize: stat.size
+
+    };
+
   }
 
   /**
@@ -295,11 +342,11 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
         return null;
     }
     
-    // 1. 尝试使用完整的/绝对路径或当前 Obsidian API 可以直接解析的路径
-    let file = this.app.vault.getAbstractFileByPath(cleanPath);
-    // 检查文件是否为 TFile 类型（即实际的文件，而不是文件夹）
-    if (file && file instanceof TFile) {
-      return file;
+    // 1. 尝试使用完整的/绝对路径或当前 Obsidian API 可以直接解析的路径
+    let file = this.app.vault.getAbstractFileByPath(cleanPath);
+    // 检查文件是否为 TFile 类型（即实际的文件，而不是文件夹）
+    if (file && file instanceof TFile) {
+      return file;
     }
 
     // 2. 处理相对路径 (./ 或 ../)
@@ -309,11 +356,11 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
         // 虽然它主要用于 Wikilink，但对于路径解析在内部也是有效的辅助手段
         const resolvedPath = this.app.metadataCache.getFirstLinkpathMatch(cleanPath, activeFile.path);
         
-        if (resolvedPath) {
-            file = this.app.vault.getAbstractFileByPath(resolvedPath);
-            if (file && file instanceof TFile) {
-              return file;
-            }
+        if (resolvedPath) {
+            file = this.app.vault.getAbstractFileByPath(resolvedPath);
+            if (file && file instanceof TFile) {
+              return file;
+            }
         }
     } else {
          // 如果 activeFile 在根目录，且路径不是绝对路径，
@@ -513,37 +560,89 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
   }
 
   /**
+
    * 扫描 Vault 中的所有图片，并为新图片创建数据记录。
+
    */
+
   async scanAllImages() {
+
     new Notice('开始扫描图片文件...');
+
     
+
     let allFiles = this.app.vault.getFiles();
+
     
-    // 如果设置了扫描文件夹路径，则只扫描该文件夹中的文件
-    if (this.settings.scanFolderPath && this.settings.scanFolderPath.trim() !== '') {
-      const folderPath = this.normalizePath(this.settings.scanFolderPath);
-      allFiles = allFiles.filter(file => this.isFileInFolder(file.path, folderPath));
+
+    // 处理文件夹路径：优先使用新的多文件夹设置，如果为空则使用旧的单文件夹设置
+
+    let folderPathsToUse: string[] = [];
+
+    
+
+    // 检查是否有新的多个文件夹路径设置
+
+    if (this.settings.scanMultipleFolderPaths && this.settings.scanMultipleFolderPaths.length > 0) {
+
+      folderPathsToUse = this.settings.scanMultipleFolderPaths.map(path => this.normalizePath(path));
+
+    } else if (this.settings.scanFolderPath && this.settings.scanFolderPath.trim() !== '') {
+
+      // 如果新的设置为空，但旧的设置有值，则使用旧设置
+
+      folderPathsToUse = [this.normalizePath(this.settings.scanFolderPath)];
+
     }
+
     
+
+    // 如果设置了扫描文件夹路径，则只扫描这些文件夹中的文件
+
+    if (folderPathsToUse.length > 0) {
+
+      allFiles = allFiles.filter(file => this.isFileInFolder(file.path, folderPathsToUse));
+
+    }
+
+    
+
     let imageCount = 0;
+
     
+
     for (const file of allFiles) {
+
       if (this.isSupportedImageFile(file)) {
+
         const existingData = this.imageDataManager.getImageDataByPath(file.path);
+
         if (!existingData) {
+
           // 如果不存在，则创建默认数据
+
           const imageData = await this.createDefaultImageData(file);
+
           this.imageDataManager.addImageData(imageData);
+
           imageCount++;
+
         }
+
       }
+
     }
+
     
+
     if (imageCount > 0) {
+
       await this.saveDataToFile();
+
     }
+
     new Notice(`扫描完成！新增了 ${imageCount} 个图片记录`);
+
   }
 
   private normalizePath(path: string): string {
@@ -555,10 +654,10 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
     return normalized;
   }
 
-  private isFileInFolder(filePath: string, folderPath: string): boolean {
-    // 检查文件是否在指定文件夹中
+  private isFileInFolder(filePath: string, folderPaths: string[]): boolean {
+    // 检查文件是否在任意一个指定的文件夹中
     const normalizedFilePath = filePath.replace(/\\/g, '/');
-    return normalizedFilePath.startsWith(folderPath);
+    return folderPaths.some(folderPath => normalizedFilePath.startsWith(folderPath));
   }
 
   private formatFileSize(bytes: number): string {
@@ -596,12 +695,10 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
     workspace.revealLeaf(leaf);
     
-    // 如果当前有打开的图片文件，更新视图
+    // 如果当前有打开的文件，更新视图
     const activeFile = this.app.workspace.getActiveFile();
-    if (activeFile && this.isSupportedImageFile(activeFile)) {
-      const view = leaf.view as ImageView;
-      await view.updateForFile(activeFile);
-    }
+    const view = leaf.view as ImageView;
+    await view.updateForFile(activeFile);
   }
 
   async updateImageInfoPanel(file: TFile | null) {
@@ -614,26 +711,32 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
   }
 
   isSupportedImageFile(file: TFile): boolean {
-
     const extension = file.extension ? file.extension.toLowerCase() : '';
-
     // 使用 Set 查找性能更好，但考虑到格式列表不长，array.includes 也可接受
-
     return this.settings.supportedFormats.includes(extension); 
-
   }
 
 
 
   // 清理失效的图片数据
 
+
+
   async cleanupInvalidImages() {
 
-    const removedCount = this.imageDataManager.cleanupInvalidImages(this.app, this.settings.scanFolderPath);
+
+
+    const removedCount = this.imageDataManager.cleanupInvalidImages(this.app, this.settings.scanFolderPath, this.settings.scanMultipleFolderPaths);
+
+
 
     await this.saveDataToFile();
 
+
+
     new Notice(`清理完成！移除了 ${removedCount} 个失效的图片数据记录。`);
+
+
 
   }
 
@@ -698,26 +801,59 @@ class ImageTaggingSettingTab extends PluginSettingTab {
         }));
 
 
+    new Setting(containerEl)
+
+      .setName('导入时自动添加的标签')
+
+      .setDesc('当启用自动添加标签时，为新图片添加的默认标签（多个标签用逗号分隔）')
+
+      .addText(text => text
+
+        .setPlaceholder('例如：未整理,新图片')
+
+        .setValue(this.plugin.settings.autoTagOnImportValue)
+
+        .onChange(async (value) => {
+
+          this.plugin.settings.autoTagOnImportValue = value;
+
+          await this.plugin.saveSettings();
+
+        }));
+
+
 
     new Setting(containerEl)
 
       .setName('扫描指定文件夹')
 
-      .setDesc('指定要扫描图片的文件夹路径（留空则扫描整个库）')
+      .setDesc('指定要扫描图片的文件夹路径，多个路径用分号(;)分隔（留空则扫描整个库）')
 
       .addText(text => text
 
-        .setPlaceholder('例如：Attachments/images')
+        .setPlaceholder('例如：Attachments/images;Pictures')
 
         .setValue(this.plugin.settings.scanFolderPath)
 
         .onChange(async (value) => {
 
+          // 保存到旧字段以保持兼容性
           this.plugin.settings.scanFolderPath = value;
-
+          
+          // 同时更新新字段
+          if (value.trim() !== '') {
+            this.plugin.settings.scanMultipleFolderPaths = value
+              .split(';')
+              .map(path => path.trim())
+              .filter(path => path.length > 0);
+          } else {
+            this.plugin.settings.scanMultipleFolderPaths = [];
+          }
+          
           await this.plugin.saveSettings();
 
         }));
+    
 
   }
 

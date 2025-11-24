@@ -18,26 +18,30 @@ export interface ImageData {
   fileSize?: number;       // 文件大小 (以字节为单位，可选)
 }
 
-// 插件设置接口
-export interface ImageTaggingSettings {
-  jsonStoragePath: string;
-  categories: string[];
-  supportedFormats: string[];
-  showInFileExplorer: boolean;
-  autoTagOnImport: boolean;
-  enableGalleryView: boolean;
-  scanFolderPath: string;
+// 插件设置接口
+export interface ImageTaggingSettings {
+  jsonStoragePath: string;
+  categories: string[];
+  supportedFormats: string[];
+  showInFileExplorer: boolean;
+  autoTagOnImport: boolean;
+  autoTagOnImportValue: string; // 自定义导入标签值
+  enableGalleryView: boolean;
+  scanFolderPath: string; // 保持原有字段用于兼容性
+  scanMultipleFolderPaths: string[]; // 新增：支持多个扫描文件夹路径
 }
 
-// 默认设置
-export const DEFAULT_SETTINGS: ImageTaggingSettings = {
-  jsonStoragePath: '.obsidian/image-tags.json',
-  categories: ['全部图片', '风景', '人物', '建筑', '美食', '植物', '动物', '艺术'],
-  supportedFormats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'],
-  showInFileExplorer: true,
-  autoTagOnImport: false,
-  enableGalleryView: true,
-  scanFolderPath: ''  // 默认为空，用户需要手动设置
+// 默认设置
+export const DEFAULT_SETTINGS: ImageTaggingSettings = {
+  jsonStoragePath: '.obsidian/image-tags.json',
+  categories: ['全部图片', '风景', '人物', '建筑', '美食', '植物', '动物', '艺术'],
+  supportedFormats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'],
+  showInFileExplorer: true,
+  autoTagOnImport: false,
+  autoTagOnImportValue: '', // 默认没有自定义标签
+  enableGalleryView: true,
+  scanFolderPath: '',  // 默认为空，用户需要手动设置
+  scanMultipleFolderPaths: [] // 默认为空数组
 };
 
 // 图片文件类型检查辅助函数
@@ -165,7 +169,7 @@ export class ImageDataManager {
   }
 
   // 清理失效的图片数据
-  public cleanupInvalidImages(app: any, scanFolderPath?: string): number {
+  public cleanupInvalidImages(app: any, scanFolderPath?: string, scanMultipleFolderPaths?: string[]): number {
     let removedCount = 0;
     const validData = new Map<string, ImageData>();
     const validPathToIdMap = new Map<string, string>();
@@ -174,10 +178,25 @@ export class ImageDataManager {
       // 检查文件是否存在
       const file = app.vault.getAbstractFileByPath(imageData.path);
       
-      // 检查是否在指定的扫描路径内（如果设置了scanFolderPath）
+      // 检查是否在指定的扫描路径内
       let isInScanFolder = true;
-      if (scanFolderPath && scanFolderPath.trim() !== '') {
+      
+      // 优先使用多个文件夹路径设置，如果为空则使用单个文件夹路径设置
+      if (scanMultipleFolderPaths && scanMultipleFolderPaths.length > 0) {
         // 标准化路径以确保正确匹配
+        const normalizedFolderPaths = scanMultipleFolderPaths.map(path => {
+          let normalizedPath = path.replace(/\\/g, '/');
+          if (!normalizedPath.endsWith('/')) {
+            normalizedPath += '/';
+          }
+          return normalizedPath;
+        });
+        
+        // 检查图片路径是否在任一扫描路径内
+        const normalizedImagePath = imageData.path.replace(/\\/g, '/');
+        isInScanFolder = normalizedFolderPaths.some(folderPath => normalizedImagePath.startsWith(folderPath));
+      } else if (scanFolderPath && scanFolderPath.trim() !== '') {
+        // 标准化路径以確保正确匹配
         let normalizedScanPath = scanFolderPath.replace(/\\/g, '/');
         if (!normalizedScanPath.endsWith('/')) {
           normalizedScanPath += '/';

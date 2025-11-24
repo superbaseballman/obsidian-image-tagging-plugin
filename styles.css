@@ -167,13 +167,45 @@
   margin-bottom: 15px;
 }
 
-.gallery-search-input {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 20px;
-  background-color: var(--background-primary-alt);
-  color: var(--text-normal);
+.gallery-search-container {
+  position: relative;
+  margin-bottom: 15px;
+}
+
+.gallery-search-input {
+  width: 100%;
+  padding: 8px 30px 8px 12px; /* 左右内边距，为清除按钮留出空间 */
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 20px;
+  background-color: var(--background-primary-alt);
+  color: var(--text-normal);
+}
+
+.search-clear-button {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: pointer;
+  font-weight: bold;
+  color: var(--text-muted);
+  background-color: transparent;
+  border: none;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.search-clear-button:hover {
+  color: var(--text-normal);
+  background-color: var(--background-secondary);
 }
 
 .gallery-content {
@@ -447,17 +479,63 @@
   gap: 6px;
 }
 
-.popular-tag-item {
-  padding: 4px 10px;
-  background-color: var(--background-secondary);
-  border-radius: 20px;
-  font-size: 0.8em;
-  cursor: pointer;
-}
-
-.popular-tag-item:hover {
-  background-color: var(--interactive-accent);
-  color: white;
+.popular-tag-item {
+  padding: 4px 10px;
+  background-color: var(--background-secondary);
+  border-radius: 20px;
+  font-size: 0.8em;
+  cursor: pointer;
+  margin: 2px;
+  display: inline-block;
+}
+
+.popular-tag-item:hover {
+  background-color: var(--interactive-accent);
+  color: white;
+}
+
+.popular-tag-item.selected {
+  background-color: var(--interactive-accent);
+  color: white;
+}
+
+.selected-tags-container {
+  margin-top: 15px;
+  padding: 0 10px;
+}
+
+.selected-tags-display {
+  margin-top: 5px;
+}
+
+.selected-tags-list {
+  min-height: 20px;
+  padding: 5px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background-color: var(--background-primary-alt);
+}
+
+.selected-tag-item {
+  display: inline-block;
+  background-color: var(--interactive-accent);
+  color: white;
+  padding: 2px 8px;
+  margin: 2px;
+  border-radius: 20px;
+  font-size: 0.8em;
+}
+
+.remove-selected-tag {
+  margin-left: 5px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.no-selected-tags {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.9em;
 }
 
 .no-popular-tags {

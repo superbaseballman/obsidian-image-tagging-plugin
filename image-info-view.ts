@@ -5,101 +5,111 @@ import { getImageResolutionWithCache, getImageTaggingPlugin, getSafeImagePath } 
 // 右侧边栏视图类型ID
 export const IMAGE_INFO_VIEW_TYPE = 'image-info-view';
 
-export class ImageView extends ItemView {
-  private imageDataManager: ImageDataManager;
-  private currentFile: TFile | null = null;
-  private imageInfoContainer: HTMLElement;
-
-  constructor(leaf: WorkspaceLeaf, imageDataManager: ImageDataManager) {
-    super(leaf);
-    this.imageDataManager = imageDataManager;
-  }
-
-  getViewType(): string {
-    return IMAGE_INFO_VIEW_TYPE;
-  }
-
-  getDisplayText(): string {
-    return '图片信息';
-  }
-
-  getIcon(): string {
-    return 'image';
-  }
-
-  async onOpen() {
-    this.createView();
-  }
-
-  async onClose() {
-    // 清理资源
-  }
-
-  private createView() {
-    this.contentEl.empty();
-    this.contentEl.addClass('image-info-panel');
-    
-    // 创建标题
-    const header = this.contentEl.createEl('div', { cls: 'image-info-header' });
-    header.createEl('h3', { text: '图片信息' });
-    
-    // 创建信息容器
-    this.imageInfoContainer = this.contentEl.createEl('div', { cls: 'image-info-container' });
-    
-    // 初始化为空内容
-    this.imageInfoContainer.createEl('div', { 
-      cls: 'no-image-selected', 
-      text: '在库中选择一个图片文件以查看详细信息' 
-    });
-  }
-
-  // 更新视图以显示指定文件的信息
-  async updateForFile(file: TFile | null) {
-    this.currentFile = file;
-    
-    if (!file) {
-      this.imageInfoContainer.empty();
-      this.imageInfoContainer.createEl('div', { 
-        cls: 'no-image-selected', 
-        text: '在库中选择一个图片文件以查看详细信息' 
-      });
-      return;
-    }
-
-    // 获取或创建图片数据
-    let imageData = this.imageDataManager.getImageDataByPath(file.path);
-    
-    if (!imageData) {
-      // 如果没有找到数据，则创建默认数据
-      imageData = {
-        id: `img_${Date.now()}_${file.path || file.name}`,
-        path: file.path || file.name || '',
-        title: file.basename,
-        tags: [],
-        date: new Date().toISOString(),
-        size: this.formatFileSize(file.stat.size),
-        fileSize: file.stat.size, // 添加原始字节大小
-        resolution: '未知',
-        format: file.extension.toUpperCase(),
-        description: '',
-        originalName: file.name,
-        lastModified: file.stat.mtime
-      };
-      
-      // 尝试获取图片尺寸
-      try {
-        const resolution = await this.getImageResolution(file);
-        imageData.resolution = resolution;
-      } catch (e) {
-        console.log('无法获取图片分辨率:', e);
-      }
-      
-      // 保存新创建的数据
-      this.imageDataManager.addImageData(imageData);
-    }
-
-    // 渲染图片信息
-    this.renderImageInfo(imageData);
+export class ImageView extends ItemView {
+  private imageDataManager: ImageDataManager;
+  private currentFile: TFile | null = null;
+  private imageInfoContainer: HTMLElement;
+  private settings: any;
+
+  constructor(leaf: WorkspaceLeaf, imageDataManager: ImageDataManager, settings: any) {
+    super(leaf);
+    this.imageDataManager = imageDataManager;
+    this.settings = settings;
+  }
+
+  getViewType(): string {
+    return IMAGE_INFO_VIEW_TYPE;
+  }
+
+  getDisplayText(): string {
+    return '图片信息';
+  }
+
+  getIcon(): string {
+    return 'image';
+  }
+
+  async onOpen() {
+    this.createView();
+  }
+
+  async onClose() {
+    // 清理资源
+  }
+
+  // 检查文件是否为支持的图片文件
+  isSupportedImageFile(file: TFile): boolean {
+    if (!file || !file.extension) return false;
+    const extension = file.extension.toLowerCase();
+    return this.settings.supportedFormats?.includes(extension) || false;
+  }
+
+  private createView() {
+    this.contentEl.empty();
+    this.contentEl.addClass('image-info-panel');
+    
+    // 创建标题
+    const header = this.contentEl.createEl('div', { cls: 'image-info-header' });
+    header.createEl('h3', { text: '图片信息' });
+    
+    // 创建信息容器
+    this.imageInfoContainer = this.contentEl.createEl('div', { cls: 'image-info-container' });
+    
+    // 初始化为空内容
+    this.imageInfoContainer.createEl('div', { 
+      cls: 'no-image-selected', 
+      text: '在库中选择一个图片文件以查看详细信息' 
+    });
+  }
+
+  // 更新视图以显示指定文件的信息
+  async updateForFile(file: TFile | null) {
+    this.currentFile = file;
+    
+    // 如果没有文件或者文件不是支持的图片格式，则显示提示信息
+    if (!file || !this.isSupportedImageFile(file)) {
+      this.imageInfoContainer.empty();
+      this.imageInfoContainer.createEl('div', { 
+        cls: 'no-image-selected', 
+        text: '在库中选择一个图片文件以查看详细信息' 
+      });
+      return;
+    }
+
+    // 获取或创建图片数据
+    let imageData = this.imageDataManager.getImageDataByPath(file.path);
+    
+    if (!imageData) {
+      // 如果没有找到数据，则创建默认数据
+      imageData = {
+        id: `img_${Date.now()}_${file.path || file.name}`,
+        path: file.path || file.name || '',
+        title: file.basename,
+        tags: [],
+        date: new Date().toISOString(),
+        size: this.formatFileSize(file.stat.size),
+        fileSize: file.stat.size, // 添加原始字节大小
+        resolution: '未知',
+        format: file.extension.toUpperCase(),
+        description: '',
+        originalName: file.name,
+        lastModified: file.stat.mtime
+      };
+      
+      // 尝试获取图片尺寸
+      try {
+        const resolution = await this.getImageResolution(file);
+        imageData.resolution = resolution;
+      } catch (e) {
+        console.log('无法获取图片分辨率:', e);
+      }
+      
+      // 保存新创建的数据
+      this.imageDataManager.addImageData(imageData);
+    }
+
+    // 渲染图片信息
+    this.renderImageInfo(imageData);
   }
 
   private renderImageInfo(imageData: ImageData) {

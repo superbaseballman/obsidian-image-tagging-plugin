@@ -15,9 +15,17 @@ export class GalleryView extends ItemView {
 
   currentFilter: string = '';
 
+
+
   currentCategory: string = '全部图片';
 
+
+
   categories: string[] = [];
+
+  
+
+  selectedTags: string[] = []; // 存储当前选择的标签
 
 
 
@@ -62,12 +70,45 @@ export class GalleryView extends ItemView {
     const galleryContainer = this.containerEl.createEl('div', { cls: 'image-gallery-container' });
     
     // 创建顶部搜索栏
+
     const header = galleryContainer.createEl('div', { cls: 'gallery-header' });
+
     const searchContainer = header.createEl('div', { cls: 'gallery-search-container' });
-    searchContainer.createEl('input', {
+
+    const searchInput = searchContainer.createEl('input', {
+
       cls: 'gallery-search-input',
+
       placeholder: '搜索图片或标签...',
+
       type: 'text'
+
+    });
+
+    // 创建清除按钮
+
+    const clearButton = searchContainer.createEl('span', {
+
+      cls: 'search-clear-button',
+
+      text: '×'
+
+    });
+
+    // 为清除按钮添加点击事件
+
+    clearButton.addEventListener('click', () => {
+
+      searchInput.value = '';
+
+      this.currentFilter = '';
+
+      this.selectedTags = []; // 清空选中的标签
+
+      this.renderImages();
+
+      this.updatePopularTags(); // 更新标签显示
+
     });
     
     // 创建主内容区域
@@ -154,8 +195,11 @@ export class GalleryView extends ItemView {
     });
     
     // 热门标签
+
     const tagsSection = sidebar.createEl('div', { cls: 'gallery-tags' });
+
     tagsSection.createEl('h4', { text: '热门标签' });
+
     const tagsContainer = tagsSection.createEl('div', { cls: 'tags-cloud' });
     
     // 图片统计信息
@@ -219,22 +263,55 @@ export class GalleryView extends ItemView {
   }
 
   private addEventListeners() {
+
     // 搜索功能
+
     const searchInput = this.containerEl.querySelector('.gallery-search-input') as HTMLInputElement;
+
     if (searchInput) {
+
       searchInput.addEventListener('input', (e) => {
+
         this.currentFilter = (e.target as HTMLInputElement).value.toLowerCase();
+
+        // 如果搜索框内容包含逗号分隔的标签，则更新selectedTags
+
+        if (this.currentFilter.includes(',')) {
+
+          this.selectedTags = this.currentFilter.split(',')
+
+            .map(tag => tag.trim())
+
+            .filter(tag => tag.length > 0);
+
+        } else if (this.currentFilter.trim() === '') {
+
+          this.selectedTags = [];
+
+        }
+
         this.renderImages();
+
       });
+
     }
+
     
+
     // 排序功能
+
     const sortSelect = this.containerEl.querySelector('.sort-select') as HTMLSelectElement;
+
     if (sortSelect) {
+
       sortSelect.addEventListener('change', () => {
+
         this.renderImages();
+
       });
+
     }
+
   }
 
   private imageGrid: HTMLElement;
@@ -259,7 +336,8 @@ export class GalleryView extends ItemView {
     }
 
     // 清理无效图片数据（删除不存在的或不在指定扫描路径内的图片记录）
-    const removedCount = this.imageDataManager.cleanupInvalidImages(this.app, this.settings.scanFolderPath);
+
+    const removedCount = this.imageDataManager.cleanupInvalidImages(this.app, this.settings.scanFolderPath, this.settings.scanMultipleFolderPaths);
     
     // 刷新图片数据（根据设置扫描图片）
     await this.scanImagesBasedOnSettings();
@@ -272,43 +350,101 @@ export class GalleryView extends ItemView {
   }
 
   private async scanImagesBasedOnSettings() {
+
     // 获取插件实例
+
     const plugin = getImageTaggingPlugin(this.app);
+
     if (!plugin) return;
 
+
+
     new Notice('开始扫描图片文件...');
+
     
+
     // 获取所有文件
+
     let allFiles = this.app.vault.getFiles();
+
     
-    // 如果设置了扫描文件夹路径，则只扫描该文件夹中的文件
-    if (this.settings.scanFolderPath && this.settings.scanFolderPath.trim() !== '') {
-      const folderPath = this.normalizePath(this.settings.scanFolderPath);
-      allFiles = allFiles.filter(file => this.isFileInFolder(file.path, folderPath));
+
+    // 处理文件夹路径：优先使用新的多文件夹设置，如果为空则使用旧的单文件夹设置
+
+    let folderPathsToUse: string[] = [];
+
+    
+
+    // 检查是否有新的多个文件夹路径设置
+
+    if (this.settings.scanMultipleFolderPaths && this.settings.scanMultipleFolderPaths.length > 0) {
+
+      folderPathsToUse = this.settings.scanMultipleFolderPaths.map(path => this.normalizePath(path));
+
+    } else if (this.settings.scanFolderPath && this.settings.scanFolderPath.trim() !== '') {
+
+      // 如果新的设置为空，但旧的设置有值，则使用旧设置
+
+      folderPathsToUse = [this.normalizePath(this.settings.scanFolderPath)];
+
     }
+
     
+
+    // 如果设置了扫描文件夹路径，则只扫描这些文件夹中的文件
+
+    if (folderPathsToUse.length > 0) {
+
+      allFiles = allFiles.filter(file => this.isFileInFolder(file.path, folderPathsToUse));
+
+    }
+
+    
+
     let imageCount = 0;
+
     
+
     // 获取当前支持的图片格式
+
     const supportedFormats = this.settings.supportedFormats || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'];
+
     
+
     for (const file of allFiles) {
+
       // 检查是否为支持的图片格式
+
       if (supportedFormats.includes(file.extension.toLowerCase())) {
+
         const existingData = this.imageDataManager.getImageDataByPath(file.path);
+
         if (!existingData) {
+
           // 如果不存在，则创建默认数据
+
           const newData = await this.createImageDataFromFile(file);
+
           this.imageDataManager.addImageData(newData);
+
           imageCount++;
+
         }
+
       }
+
     }
+
     
+
     if (imageCount > 0 && plugin) {
+
       await plugin.saveDataToFile();
+
     }
+
     new Notice(`扫描完成！新增了 ${imageCount} 个图片记录`);
+
   }
 
   private normalizePath(path: string): string {
@@ -320,10 +456,10 @@ export class GalleryView extends ItemView {
     return normalized;
   }
 
-  private isFileInFolder(filePath: string, folderPath: string): boolean {
-    // 检查文件是否在指定文件夹中
+  private isFileInFolder(filePath: string, folderPaths: string[]): boolean {
+    // 检查文件是否在任意一个指定的文件夹中
     const normalizedFilePath = filePath.replace(/\\/g, '/');
-    return normalizedFilePath.startsWith(folderPath);
+    return folderPaths.some(folderPath => normalizedFilePath.startsWith(folderPath));
   }
 
   private async saveDataToFile() {
@@ -335,52 +471,121 @@ export class GalleryView extends ItemView {
   }
 
   private async createImageDataFromFile(file: any, id?: string): Promise<ImageData> {
+
     // 如果没有提供ID，则生成一个新的ID
+
     const imageId = id || this.generateId();
+
     
+
     // 获取文件信息
+
     const stat = file.stat;
+
     const path = file.path;
+
     const name = file.basename;
+
     const extension = file.extension;
+
     const size = this.formatFileSize(stat.size);
+
     const lastModified = stat.mtime;
+
     
+
     let resolution = '未知';
+
     let width = 0;
+
     let height = 0;
+
     
+
     try {
+
       // 使用缓存的图片分辨率获取方法
+
       const dimensions = await getImageResolutionWithCache(file, this.app);
+
       if (dimensions) {
+
         width = dimensions.width;
+
         height = dimensions.height;
+
         resolution = dimensions.resolution;
+
       }
+
     } catch (e) {
+
       console.warn(`无法获取图片分辨率: ${path}`, e);
+
     }
+
     
+
+    // 从插件获取设置并根据设置确定标签
+
+    const plugin = getImageTaggingPlugin(this.app);
+
+    let tags: string[] = [];
+
+    if (plugin && plugin.settings.autoTagOnImport && plugin.settings.autoTagOnImportValue) {
+
+      // 如果启用了自动标签功能且有自定义标签值，则使用这些标签
+
+      tags = plugin.settings.autoTagOnImportValue
+
+        .split(',')
+
+        .map(tag => tag.trim())
+
+        .filter(tag => tag.length > 0);
+
+    }
+
+    
+
     // 创建图片数据对象
+
     const imageData: ImageData = {
+
       id: imageId,
+
       path: path,
+
       title: name,
-      tags: [], // 新添加的图片默认没有标签
+
+      tags: tags, // 使用根据设置确定的标签
+
       date: new Date().toISOString(),
+
       size: size,
+
       resolution: resolution,
+
       format: extension.toUpperCase(),
+
       description: '',
+
       originalName: file.name,
+
       lastModified: lastModified,
+
       width: width,
+
       height: height,
+
       fileSize: stat.size
+
     };
 
+
+
     return imageData;
+
   }
 
   private generateId(): string {
@@ -418,14 +623,48 @@ export class GalleryView extends ItemView {
       );
     }
     
-    // 应用搜索过滤
+    // 应用搜索过滤 - 支持多标签搜索（用逗号分隔的标签）
+
     if (this.currentFilter) {
+
       const filter = this.currentFilter.toLowerCase();
-      images = images.filter(image => 
-        image.title.toLowerCase().includes(filter) ||
-        image.description.toLowerCase().includes(filter) ||
-        image.tags.some(tag => tag.toLowerCase().includes(filter))
-      );
+
+      // 检查是否是标签搜索（包含逗号分隔的多个标签）
+
+      const tagFilters = filter.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
+
+      
+
+      if (tagFilters.length > 1) {
+
+        // 多标签搜索：图片必须包含所有指定标签
+
+        images = images.filter(image => 
+
+          tagFilters.every(tagFilter => 
+
+            image.tags.some(tag => tag.toLowerCase().includes(tagFilter))
+
+          )
+
+        );
+
+      } else {
+
+        // 单标签或普通搜索
+
+        images = images.filter(image => 
+
+          image.title.toLowerCase().includes(filter) ||
+
+          image.description.toLowerCase().includes(filter) ||
+
+          image.tags.some(tag => tag.toLowerCase().includes(filter))
+
+        );
+
+      }
+
     }
     
     // 应用排序
@@ -581,46 +820,236 @@ export class GalleryView extends ItemView {
     if (totalCategoriesEl) totalCategoriesEl.setText(totalCategories.toString());
   }
 
-  private updatePopularTags() {
-    const tagsContainer = this.containerEl.querySelector('.tags-cloud');
-    if (!tagsContainer) return;
-    
-    tagsContainer.empty();
-    
-    // 获取热门标签
-    const popularTags = this.imageDataManager.getPopularTags(10);
-    
-    popularTags.forEach(tagInfo => {
-      const tagEl = tagsContainer.createEl('span', { 
-        cls: 'popular-tag-item',
-        text: `${tagInfo.tag} (${tagInfo.count})`
-      });
-      
-      tagEl.addEventListener('click', () => {
-        this.currentFilter = tagInfo.tag.toLowerCase();
-        // 清空搜索框
-        const searchInput = this.containerEl.querySelector('.gallery-search-input') as HTMLInputElement;
-        if (searchInput) {
-          searchInput.value = tagInfo.tag;
-        }
-        this.renderImages();
-      });
-    });
-    
-    // 如果热门标签为空，显示提示
-    if (popularTags.length === 0) {
-      tagsContainer.createEl('div', { 
-        cls: 'no-popular-tags',
-        text: '暂无标签数据'
-      });
+  private toggleTagSelection(tag: string) {
+
+    const index = this.selectedTags.indexOf(tag);
+
+    if (index > -1) {
+
+      // 如果标签已选中，则取消选择
+
+      this.selectedTags.splice(index, 1);
+
+    } else {
+
+      // 如果标签未选中，则添加到选择列表
+
+      this.selectedTags.push(tag);
+
     }
+
+    
+
+    // 更新搜索框内容以反映当前选择的标签
+
+    const searchInput = this.containerEl.querySelector('.gallery-search-input') as HTMLInputElement;
+
+    if (searchInput) {
+
+      if (this.selectedTags.length > 0) {
+
+        searchInput.value = this.selectedTags.join(', ');
+
+        this.currentFilter = this.selectedTags.join(', ');
+
+      } else {
+
+        searchInput.value = '';
+
+        this.currentFilter = '';
+
+      }
+
+    }
+
+    
+
+    this.renderImages();
+
+    this.updatePopularTags(); // 重新渲染热门标签以更新选中状态
+
+  }
+
+  
+
+  private updateSelectedTagsDisplay() {
+
+    const selectedTagsList = this.containerEl.querySelector('.selected-tags-list');
+
+    if (!selectedTagsList) return;
+
+    
+
+    selectedTagsList.empty();
+
+    
+
+    this.selectedTags.forEach(tag => {
+
+      const tagElement = selectedTagsList.createEl('span', {
+
+        cls: 'selected-tag-item',
+
+        text: tag
+
+      });
+
+      
+
+      const removeBtn = tagElement.createEl('span', {
+
+        cls: 'remove-selected-tag',
+
+        text: '×'
+
+      });
+
+      
+
+      removeBtn.addEventListener('click', (e) => {
+
+        e.stopPropagation();
+
+        this.removeSelectedTag(tag);
+
+      });
+
+    });
+
+    
+
+    // 如果没有选中的标签，显示提示
+
+    if (this.selectedTags.length === 0) {
+
+      selectedTagsList.createEl('span', {
+
+        cls: 'no-selected-tags',
+
+        text: '未选择标签'
+
+      });
+
+    }
+
+  }
+
+  
+
+  private removeSelectedTag(tag: string) {
+
+    const index = this.selectedTags.indexOf(tag);
+
+    if (index > -1) {
+
+      this.selectedTags.splice(index, 1);
+
+    }
+
+    
+
+    // 更新搜索框内容
+
+    const searchInput = this.containerEl.querySelector('.gallery-search-input') as HTMLInputElement;
+
+    if (searchInput) {
+
+      if (this.selectedTags.length > 0) {
+
+        searchInput.value = this.selectedTags.join(', ');
+
+        this.currentFilter = this.selectedTags.join(', ');
+
+      } else {
+
+        searchInput.value = '';
+
+        this.currentFilter = '';
+
+      }
+
+    }
+
+    
+
+    this.renderImages();
+
+    this.updatePopularTags(); // 重新渲染热门标签以更新选中状态
+
+  }
+
+
+
+  private updatePopularTags() {
+
+    const tagsContainer = this.containerEl.querySelector('.tags-cloud');
+
+    if (!tagsContainer) return;
+
+    
+
+    tagsContainer.empty();
+
+    
+
+    // 获取热门标签
+
+    const popularTags = this.imageDataManager.getPopularTags(10);
+
+    
+
+    popularTags.forEach(tagInfo => {
+
+      const tagEl = tagsContainer.createEl('span', { 
+
+        cls: `popular-tag-item ${this.selectedTags.includes(tagInfo.tag) ? 'selected' : ''}`,
+
+        text: `${tagInfo.tag} (${tagInfo.count})`
+
+      });
+
+      
+
+      tagEl.addEventListener('click', (e) => {
+
+        e.stopPropagation(); // 防止事件冒泡
+
+        this.toggleTagSelection(tagInfo.tag);
+
+      });
+
+    });
+
+    
+
+    // 如果热门标签为空，显示提示
+
+    if (popularTags.length === 0) {
+
+      tagsContainer.createEl('div', { 
+
+        cls: 'no-popular-tags',
+
+        text: '暂无标签数据'
+
+      });
+
+    }
+
+    
+
+    // 更新已选标签显示
+
+    this.updateSelectedTagsDisplay();
+
   }
 
   private openImageDetail(image: ImageData) {
     // 创建模态框显示图片详情
     const modal = this.containerEl.createEl('div', { cls: 'image-detail-modal' });
     
-    // 使用安全的图片路径
+    // 使用安全的图片路径
+
     const imagePath = getSafeImagePath(this.app, image.path);
     
     modal.innerHTML = `
