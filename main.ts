@@ -1,11 +1,15 @@
-import { App, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, Notice, Vault } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, Notice, Menu } from 'obsidian';
 import { ImageData, ImageTaggingSettings, DEFAULT_SETTINGS, ImageDataManager } from './image-data-model';
 import { ImageView, IMAGE_INFO_VIEW_TYPE } from './image-info-view';
 import { GalleryView, GALLERY_VIEW_TYPE } from './gallery-view';
-import { getImageResolutionWithCache } from './utils';
+import { getImageResolutionWithCache, getImageFileFromPath } from './utils';
 
 // 导入样式
 import './styles.css';
+
+interface Listener {
+  (this: Document, ev: Event): any;
+}
 
 export default class ImageTaggingPlugin extends Plugin {
   settings: ImageTaggingSettings;
@@ -18,6 +22,52 @@ export default class ImageTaggingPlugin extends Plugin {
     // 从JSON文件加载数据
     await this.loadDataFromFile();
 
+    // 注册图片右键菜单
+    this.registerDomEvent(document, 'contextmenu', async (evt: MouseEvent) => {
+      // 只处理 markdown 渲染区域的图片
+      const target = evt.target as HTMLElement;
+      if (!target) return;
+      // 兼容 Obsidian 预览和编辑模式下的图片
+      let imgEl: HTMLImageElement | null = null;
+      if (target.tagName === 'IMG') {
+        imgEl = target as HTMLImageElement;
+      } else if (target.closest) {
+        const found = target.closest('img');
+        if (found) imgEl = found as HTMLImageElement;
+      }
+      if (!imgEl) return;
+
+      // 构造自定义菜单
+      const menu = new Menu();
+      menu.addItem((item: any) => {
+        item.setTitle('显示图片信息').setIcon('image').onClick(async () => {
+          // 尝试获取图片 src
+          const src = imgEl!.getAttribute('src');
+          if (!src) return;
+          // 解析 src，找到 vault 内的图片文件
+          let file: any = null;
+          // Obsidian 通常图片 src 以 app:// 或 vault 路径开头
+          if (src.startsWith('app://')) {
+            // 通过 Obsidian API 查找 TFile
+            const files = this.app.vault.getFiles();
+            file = files.find(f => (this.app.vault.getResourcePath(f) === src));
+          } else {
+            // 可能是相对路径
+            file = this.app.vault.getAbstractFileByPath(src);
+          }
+          if (file && this.isSupportedImageFile(file)) {
+            // 打开 image-info-view 并显示该图片
+            await this.openImageInfoPanel();
+            await this.updateImageInfoPanel(file);
+          } else {
+            new Notice('未找到图片文件或不支持的图片格式');
+          }
+        });
+      });
+      // 阻止原生菜单并显示自定义菜单
+      evt.preventDefault();
+      menu.showAtPosition({x: evt.clientX, y: evt.clientY});
+    });
     // 添加设置选项卡
     this.addSettingTab(new ImageTaggingSettingTab(this.app, this));
 
@@ -108,7 +158,7 @@ this.registerEvent(
 
 
 
-    // 注册文件重命名事件，用于更新图片路径
+        // 注册文件重命名事件，用于更新图片路径
 
     this.registerEvent(
 
@@ -143,6 +193,122 @@ this.registerEvent(
       })
 
     );
+
+
+    // 在布局准备就绪后设置编辑器图片点击处理程序
+    this.app.workspace.onLayoutReady(() => {
+      this.setupEditorImageClickHandler();
+    });
+
+    // 在编辑器的原生右键菜单中加入“查看图片信息”项
+    this.registerEvent(
+      this.app.workspace.on('editor-menu', (menu: Menu, editor: any, view: any) => {
+        try {
+          if (!editor) return;
+          const cursor = editor.getCursor();
+          const line = editor.getLine(cursor.line || 0) as string;
+          const ch = cursor.ch || 0;
+
+          // 尝试在当前行中找到图片链接（Markdown/HTML/WikiLink）并且光标位于链接范围内
+          const mdRegex = /!\[[^\]]*\]\(([^)]+)\)/g;
+          const wikiRegex = /!\[\[\s*([^|\]]+)\s*(?:\|[^\]]*)?\]\]/g;
+          const htmlRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/g;
+
+          let foundPath: string | null = null;
+
+          const findMatch = (regex: RegExp) => {
+            let m: RegExpExecArray | null;
+            while ((m = regex.exec(line)) !== null) {
+              const start = m.index;
+              const end = start + m[0].length;
+              if (ch >= start && ch <= end) {
+                return m[1];
+              }
+            }
+            return null;
+          };
+
+          foundPath = findMatch(mdRegex) || findMatch(wikiRegex) || findMatch(htmlRegex);
+
+          if (foundPath) {
+            menu.addItem((item) => {
+              item
+                .setTitle('查看图片信息')
+                .setIcon('image')
+                .onClick(async () => {
+                  // 尝试解析路径并打开图片信息面板
+                  const activeFile = view?.file || this.app.workspace.getActiveFile();
+                  const file = await this.getImageInfoFromPath(foundPath!, activeFile as TFile);
+                  if (file && this.isSupportedImageFile(file as TFile)) {
+                    await this.openImageInfoPanel();
+                    await this.updateImageInfoPanel(file as TFile);
+                  } else {
+                    new Notice('未找到图片文件或不支持的图片格式');
+                  }
+                });
+            });
+          }
+        } catch (err) {
+          // 忽略错误以免影响原生菜单
+          console.error('editor-menu 处理出错:', err);
+        }
+      })
+    );
+
+    // 注册文档事件监听器，用于处理所有窗口中的图片右键菜单
+    this.registerDocument(document);
+
+    app.workspace.on("window-open", (workspaceWindow, window) => {
+      this.registerDocument(window.document);
+    });
+  }
+
+  /**
+   * 设置编辑器中的图片点击处理程序
+   */
+  private setupEditorImageClickHandler() {
+    // 监听编辑器内容区域的点击事件
+    const clickEventHandler = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      // 检查点击的是否为图片元素
+      if (target.tagName === 'IMG') {
+        event.preventDefault(); // 阻止默认行为
+        
+        let imagePath = '';
+        // 对于 <img> 标签
+        imagePath = target.getAttribute('src') || '';
+        
+        if (imagePath) {
+          // 尝试从路径获取实际的文件对象
+          const file = getImageFileFromPath(imagePath, this.app);
+          if (file && this.isSupportedImageFile(file)) {
+            // 打开图片信息面板并显示该图片的信息
+            this.openImageInfoPanel();
+            this.updateImageInfoPanel(file);
+          }
+        }
+      }
+    };
+
+    // 为所有当前和未来的编辑器实例添加事件监听器
+    this.app.workspace.onLayoutReady(() => {
+      // 监听新打开的编辑器
+      this.registerEvent(
+        this.app.workspace.on('active-leaf-change', (leaf) => {
+          if (leaf && leaf.view && (leaf.view as any).contentEl) {
+            (leaf.view as any).contentEl.removeEventListener('click', clickEventHandler);
+            (leaf.view as any).contentEl.addEventListener('click', clickEventHandler);
+          }
+        })
+      );
+      
+      // 为当前已打开的编辑器添加监听器
+      this.app.workspace.iterateAllLeaves((leaf) => {
+        if (leaf.view && (leaf.view as any).contentEl) {
+          (leaf.view as any).contentEl.addEventListener('click', clickEventHandler);
+        }
+      });
+    });
   }
 
   /**
@@ -352,15 +518,29 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
     // 2. 处理相对路径 (./ 或 ../)
     // 即使路径不是以 './' 或 '../' 开头，它也可能是相对于当前文件路径的。
     if (activeFile.parent) {
-        // 使用 resolveLinkpath 方法来处理相对路径（Obsidian API 内部提供）
-        // 虽然它主要用于 Wikilink，但对于路径解析在内部也是有效的辅助手段
-        const resolvedPath = this.app.metadataCache.getFirstLinkpathMatch(cleanPath, activeFile.path);
+        // 使用 normalizePath 来处理相对路径
+        // 构造相对路径
+        const dir = activeFile.parent.path;
+        // 处理以 ./ 或 ../ 开头的相对路径
+        let relativePath = cleanPath;
+        if (cleanPath.startsWith('./')) {
+            relativePath = cleanPath.substring(2);
+        }
         
-        if (resolvedPath) {
-            file = this.app.vault.getAbstractFileByPath(resolvedPath);
-            if (file && file instanceof TFile) {
-              return file;
+        // 构造完整路径
+        const fullPath = dir ? `${dir}/${relativePath}` : relativePath;
+        const normalizedPath = fullPath.split('/').reduce((acc: string[], part) => {
+            if (part === '..') {
+                acc.pop();
+            } else if (part !== '.') {
+                acc.push(part);
             }
+            return acc;
+        }, []).join('/');
+        
+        file = this.app.vault.getAbstractFileByPath(normalizedPath);
+        if (file && file instanceof TFile) {
+          return file;
         }
     } else {
          // 如果 activeFile 在根目录，且路径不是绝对路径，
@@ -385,7 +565,7 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
     // 清理视图
     this.app.workspace.detachLeavesOfType(GALLERY_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(IMAGE_INFO_VIEW_TYPE);
-  }
+}
 
   async loadSettings() {
 
@@ -668,6 +848,78 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+
+  /**
+   * 监听文档中的元素事件
+   * @param el HTML元素
+   * @param event 事件类型
+   * @param selector CSS选择器
+   * @param listener 事件监听器
+   * @param options 选项
+   */
+  onElement(
+    el: Document,
+    event: keyof HTMLElementEventMap,
+    selector: string,
+    listener: Listener,
+    options?: { capture?: boolean }
+  ) {
+    // 替换jQuery风格的on/off为标准DOM API
+    const delegatedListener = (e: Event) => {
+      const target = e.target as Element;
+      if (target.matches(selector)) {
+        listener.call(el, e);
+      }
+    };
+    
+    el.addEventListener(event, delegatedListener, options);
+    return () => el.removeEventListener(event, delegatedListener, options);
+  }
+
+  /**
+   * 注册文档事件监听器
+   * @param document 要监听的文档
+   */
+  registerDocument(document: Document) {
+    this.register(
+      this.onElement(
+        document,
+        "contextmenu" as keyof HTMLElementEventMap,
+        "img",
+        this.onImageContextMenu.bind(this)
+      )
+    );
+  }
+
+  /**
+   * 处理图片右键菜单
+   * @param event 鼠标事件
+   */
+  onImageContextMenu(event: MouseEvent) {
+    event.preventDefault();
+    const target = event.target as HTMLImageElement;
+    
+    if (target.localName === 'img') {
+      const imgPath = target.getAttribute('src') || '';
+      if (imgPath) {
+        const file = getImageFileFromPath(imgPath, this.app);
+        if (file && this.isSupportedImageFile(file)) {
+          const menu = new Menu();
+          menu.addItem((item) => {
+            item
+              .setTitle('查看图片信息')
+              .setIcon('image')
+              .onClick(() => {
+                // 打开图片信息面板并显示该图片的信息
+                this.openImageInfoPanel();
+                this.updateImageInfoPanel(file);
+              });
+          });
+          menu.showAtPosition({ x: event.pageX, y: event.pageY });
+        }
+      }
+    }
   }
 
   async openGalleryView() {

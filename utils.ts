@@ -180,3 +180,48 @@ export async function preloadImageInfo(files: TFile[], app: any, maxConcurrent =
   
   return results;
 }
+
+/**
+ * 从图片路径获取 TFile 对象
+ * @param imagePath 图片路径
+ * @param app Obsidian App 实例
+ * @returns TFile 对象或 null
+ */
+export function getImageFileFromPath(imagePath: string, app: App): TFile | null {
+  // 处理不同格式的图片路径
+  if (!imagePath) return null;
+  
+  // 去除 Obsidian 特定的协议前缀和查询参数
+  let cleanPath = imagePath.replace(/^app:\/\/\+\/\w+\//, '');
+  if (cleanPath.includes('?')) {
+    cleanPath = cleanPath.substring(0, cleanPath.indexOf('?'));
+  }
+
+  // 尝试直接获取文件
+  let file = app.vault.getAbstractFileByPath(cleanPath);
+  if (file && file instanceof TFile) {
+    return file;
+  }
+
+  // 如果直接路径未找到，尝试在当前打开的文件所在目录查找
+  const activeFile = app.workspace.getActiveFile();
+  if (activeFile && !cleanPath.startsWith('/')) {
+    // 构造相对路径
+    const dir = activeFile.parent?.path || '';
+    const relativePath = dir ? `${dir}/${cleanPath}` : cleanPath;
+    file = app.vault.getAbstractFileByPath(relativePath);
+    if (file && file instanceof TFile) {
+      return file;
+    }
+  }
+
+  // 尝试匹配文件名
+  if (!cleanPath.includes('/')) {
+    const matchingFile = app.vault.getFiles().find(f => f.name === cleanPath || f.basename === cleanPath);
+    if (matchingFile) {
+      return matchingFile;
+    }
+  }
+
+  return null;
+}

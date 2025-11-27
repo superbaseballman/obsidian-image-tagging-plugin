@@ -8,7 +8,12 @@
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "version": "node version-bump.mjs && git add manifest.json versions.json"
   },
-  "keywords": ["obsidian", "image", "tagging", "gallery"],
+  "keywords": [
+    "obsidian",
+    "image",
+    "tagging",
+    "gallery"
+  ],
   "author": "Obsidian Eagle",
   "license": "MIT",
   "devDependencies": {
