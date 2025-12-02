@@ -90,6 +90,11 @@ export default class ImageTaggingPlugin extends Plugin {
       }
     });
 
+    // 添加功能区图标
+    this.addRibbonIcon('image', '打开图片图库', (evt: MouseEvent) => {
+      this.openGalleryView();
+    });
+
     this.addCommand({
       id: 'open-image-info-panel',
       name: '打开图片信息面板',
@@ -942,15 +947,15 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
       leaf = leaves[0];
     } else {
       leaf = workspace.getRightLeaf(false);
-      await leaf.setViewState({ type: IMAGE_INFO_VIEW_TYPE, active: true });
+        await leaf.setViewState({ type: IMAGE_INFO_VIEW_TYPE, active: true });
     }
 
-    workspace.revealLeaf(leaf);
-    
-    // 如果当前有打开的文件，更新视图
-    const activeFile = this.app.workspace.getActiveFile();
-    const view = leaf.view as ImageView;
-    await view.updateForFile(activeFile);
+      workspace.revealLeaf(leaf);
+      
+      // 如果当前有打开的文件，更新视图
+      const activeFile = this.app.workspace.getActiveFile();
+      const view = leaf.view as ImageView;
+      await view.updateForFile(activeFile);
   }
 
   async updateImageInfoPanel(file: TFile | null) {
