@@ -342,6 +342,9 @@ export class GalleryView extends ItemView {
     // 刷新图片数据（根据设置扫描图片）
     await this.scanImagesBasedOnSettings();
 
+    // 保存数据到文件
+    await this.saveDataToFile();
+
     // 重新渲染
     this.renderImages();
 
