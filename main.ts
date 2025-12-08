@@ -947,23 +947,29 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
       leaf = leaves[0];
     } else {
       leaf = workspace.getRightLeaf(false);
-        await leaf.setViewState({ type: IMAGE_INFO_VIEW_TYPE, active: true });
+      await leaf.setViewState({ type: IMAGE_INFO_VIEW_TYPE, active: true });
     }
 
-      workspace.revealLeaf(leaf);
-      
-      // 如果当前有打开的文件，更新视图
+    workspace.revealLeaf(leaf);
+    
+    // 如果当前有打开的文件，更新视图
+    // 确保视图是ImageView类型的实例后再调用updateForFile方法
+    if (leaf.view instanceof ImageView) {
       const activeFile = this.app.workspace.getActiveFile();
       const view = leaf.view as ImageView;
       await view.updateForFile(activeFile);
+    }
   }
 
   async updateImageInfoPanel(file: TFile | null) {
     const leaves = this.app.workspace.getLeavesOfType(IMAGE_INFO_VIEW_TYPE);
     
     for (const leaf of leaves) {
-      const view = leaf.view as ImageView;
-      await view.updateForFile(file);
+      // 确保视图是ImageView类型的实例后再调用updateForFile方法
+      if (leaf.view instanceof ImageView) {
+        const view = leaf.view as ImageView;
+        await view.updateForFile(file);
+      }
     }
   }
 
