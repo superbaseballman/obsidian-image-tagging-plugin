@@ -507,52 +507,29 @@ this.registerEvent(
  * @param activeFile 当前活动的 Markdown 文件，用于解析相对路径
  */
 async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile | null> {
-    const cleanPath = imagePath.trim();
+    // 解码URI编码的路径，处理包含空格的路径
+    let decodedPath = imagePath.trim();
+    try {
+      decodedPath = decodeURIComponent(decodedPath);
+    } catch (e) {
+      // 如果解码失败，使用原始路径
+      console.warn('Failed to decode URI component:', imagePath, e);
+    }
+    
+    const cleanPath = decodedPath;
     if (!cleanPath || cleanPath.includes('://')) {
         // 排除空路径或外部 URL
         return null;
     }
+
+    // 使用 Obsidian 的标准链接解析方法
+    const file = this.app.metadataCache.getFirstLinkpathDest(cleanPath, activeFile.path);
     
-    // 1. 尝试使用完整的/绝对路径或当前 Obsidian API 可以直接解析的路径
-    let file = this.app.vault.getAbstractFileByPath(cleanPath);
-    // 检查文件是否为 TFile 类型（即实际的文件，而不是文件夹）
-    if (file && file instanceof TFile) {
-      return file;
+    if (file instanceof TFile) {
+        return file;
     }
 
-    // 2. 处理相对路径 (./ 或 ../)
-    // 即使路径不是以 './' 或 '../' 开头，它也可能是相对于当前文件路径的。
-    if (activeFile.parent) {
-        // 使用 normalizePath 来处理相对路径
-        // 构造相对路径
-        const dir = activeFile.parent.path;
-        // 处理以 ./ 或 ../ 开头的相对路径
-        let relativePath = cleanPath;
-        if (cleanPath.startsWith('./')) {
-            relativePath = cleanPath.substring(2);
-        }
-        
-        // 构造完整路径
-        const fullPath = dir ? `${dir}/${relativePath}` : relativePath;
-        const normalizedPath = fullPath.split('/').reduce((acc: string[], part) => {
-            if (part === '..') {
-                acc.pop();
-            } else if (part !== '.') {
-                acc.push(part);
-            }
-            return acc;
-        }, []).join('/');
-        
-        file = this.app.vault.getAbstractFileByPath(normalizedPath);
-        if (file && file instanceof TFile) {
-          return file;
-        }
-    } else {
-         // 如果 activeFile 在根目录，且路径不是绝对路径，
-         // 理论上 getAbstractFileByPath(cleanPath) 在步骤 1 应该能处理。
-    }
-
-    // 3. 尝试在整个 Vault 中查找匹配的文件名 (作为兼容性回退)
+    // 兼容性回退：尝试在整个 Vault 中查找匹配的文件名
     if (!cleanPath.includes('/') && !cleanPath.includes('\\')) {
         const matchingFile = this.app.vault.getFiles().find(f => 
             f.name === cleanPath || 
