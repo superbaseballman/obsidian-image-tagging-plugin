@@ -1,6 +1,6 @@
 import { ItemView, WorkspaceLeaf, TFile, Notice } from 'obsidian';
 import { ImageData, ImageDataManager } from './image-data-model';
-import { getImageResolutionWithCache, getImageTaggingPlugin, getSafeImagePath } from './utils';
+import { getImageResolutionWithCache, getImageTaggingPlugin, getSafeImagePath, deleteImageFile } from './utils';
 
 // 右侧边栏视图类型ID
 export const IMAGE_INFO_VIEW_TYPE = 'image-info-view';
@@ -203,6 +203,15 @@ export class ImageView extends ItemView {
       text: '保存更改'
     });
     
+    // 删除按钮
+    const deleteBtn = infoContainer.createEl('button', {
+      cls: 'delete-image-btn',
+      text: '删除文件',
+      attr: {
+        style: 'background-color: #da3633; border-color: #ff7b72; color: white; margin-top: 10px;'
+      }
+    });
+
     // 事件处理
     addTagBtn.addEventListener('click', () => {
       this.addTag(tagInput, imageData, tagsList);
@@ -216,6 +225,10 @@ export class ImageView extends ItemView {
     
     saveBtn.addEventListener('click', () => {
       this.saveImageInfo(imageData, titleInput, descInput);
+    });
+    
+    deleteBtn.addEventListener('click', () => {
+      this.deleteImageFile(imageData);
     });
   }
   
@@ -307,6 +320,32 @@ export class ImageView extends ItemView {
         new Notice(`找不到文件: ${path}`);
       }
     } catch (error) {
+    }
   }
-}
+
+  private async deleteImageFile(imageData: ImageData) {
+    // 确认删除对话框
+    const confirmed = confirm(`确定要删除图片 "${imageData.title}" 吗？`);
+    
+    if (!confirmed) {
+      return; // 用户取消删除
+    }
+
+    try {
+      // 使用工具函数删除图片文件
+      const success = await deleteImageFile(imageData, this.app, this.imageDataManager, this.currentFile);
+      
+      if (success) {
+        new Notice(`已删除图片: ${imageData.title}`);
+        
+        // 关闭当前视图
+        this.leaf.detach();
+      } else {
+        new Notice('删除失败，请查看控制台获取更多信息');
+      }
+    } catch (error) {
+      console.error('删除图片文件时发生错误:', error);
+      new Notice(`删除失败: ${error.message}`);
+    }
+  }
 }

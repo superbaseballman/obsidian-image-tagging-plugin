@@ -225,3 +225,48 @@ export function getImageFileFromPath(imagePath: string, app: App): TFile | null 
 
   return null;
 }
+
+/**
+ * 删除图片文件及其相关数据
+ * @param imageData - 要删除的图片数据
+ * @param app - Obsidian App实例
+ * @param imageDataManager - 图片数据管理器实例
+ * @param currentFile - 当前TFile对象（可选，如果未提供则根据路径获取）
+ * @returns Promise<boolean> - 删除是否成功
+ */
+export async function deleteImageFile(
+  imageData: any, 
+  app: App, 
+  imageDataManager: any, 
+  currentFile?: TFile | null
+): Promise<boolean> {
+  try {
+    let fileToDelete: TFile | null = null;
+
+    if (currentFile) {
+      fileToDelete = currentFile;
+    } else {
+      // 如果currentFile不存在，尝试通过路径获取文件
+      const file = app.vault.getAbstractFileByPath(imageData.path);
+      if (file && file instanceof TFile) {
+        fileToDelete = file;
+      }
+    }
+
+    if (!fileToDelete) {
+      console.error('找不到要删除的文件');
+      return false;
+    }
+
+    // 从文件系统中删除文件
+    await app.vault.delete(fileToDelete);
+
+    // 从数据管理器中移除该图片的数据
+    imageDataManager.removeImageData(imageData.id);
+
+    return true;
+  } catch (error) {
+    console.error('删除图片文件时发生错误:', error);
+    return false;
+  }
+}
