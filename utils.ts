@@ -1,4 +1,5 @@
 import { TFile, App } from 'obsidian';
+import { ImageDataManager, ImageTaggingSettings } from './image-data-model';
 
 // 图片信息缓存
 interface CachedImageInfo {
@@ -64,12 +65,16 @@ export interface ImageTaggingPlugin {
   settings: ImageTaggingSettings;
   saveDataToFile(): Promise<void>;
   loadDataFromFile(): Promise<void>;
+  saveSettings(): Promise<void>;
 }
 
 export function getImageTaggingPlugin(app: App): ImageTaggingPlugin | null {
-  const plugin = app.plugins.plugins['image-tagging-obsidian'];
-  if (plugin) {
-    return plugin as ImageTaggingPlugin;
+  const plugins = (app as any).plugins;
+  if (plugins && plugins.plugins) {
+    const plugin = plugins.plugins['image-tagging-obsidian'];
+    if (plugin) {
+      return plugin as ImageTaggingPlugin;
+    }
   }
   return null;
 }

@@ -1,5 +1,5 @@
 import { ItemView, WorkspaceLeaf, Notice, TFile, App } from 'obsidian';
-import { ImageData, ImageTaggingSettings, ImageDataManager } from './image-data-model';
+import { MediaData, ImageTaggingSettings, ImageDataManager, getMediaType } from './image-data-model';
 import { getImageResolutionWithCache, getImageTaggingPlugin, getSafeImagePath } from './utils';
 
 // 图库视图类型ID
@@ -46,7 +46,7 @@ export class GalleryView extends ItemView {
   }
 
   getDisplayText(): string {
-    return '图片图库';
+    return '媒体图库';
   }
 
   getIcon(): string {
@@ -79,7 +79,7 @@ export class GalleryView extends ItemView {
 
       cls: 'gallery-search-input',
 
-      placeholder: '搜索图片或标签...',
+      placeholder: '搜索媒体或标签...',
 
       type: 'text'
 
@@ -473,7 +473,7 @@ export class GalleryView extends ItemView {
     }
   }
 
-  private async createImageDataFromFile(file: any, id?: string): Promise<ImageData> {
+private async createImageDataFromFile(file: any, id?: string): Promise<MediaData> {
 
     // 如果没有提供ID，则生成一个新的ID
 
@@ -505,25 +505,45 @@ export class GalleryView extends ItemView {
 
     
 
+    const mediaType = getMediaType(file) || 'image';
+
+    
+
     try {
 
-      // 使用缓存的图片分辨率获取方法
+      // 对于图片，使用缓存的图片分辨率获取方法
 
-      const dimensions = await getImageResolutionWithCache(file, this.app);
+      if (mediaType === 'image') {
 
-      if (dimensions) {
+        const dimensions = await getImageResolutionWithCache(file, this.app);
 
-        width = dimensions.width;
+        if (dimensions) {
 
-        height = dimensions.height;
+          width = dimensions.width;
 
-        resolution = dimensions.resolution;
+          height = dimensions.height;
+
+          resolution = dimensions.resolution;
+
+        }
+
+      } else if (mediaType === 'video') {
+
+        // 对于视频，暂时保持默认分辨率
+
+        resolution = '视频文件';
+
+      } else if (mediaType === 'audio') {
+
+        // 对于音频，暂时保持默认分辨率
+
+        resolution = '音频文件';
 
       }
 
     } catch (e) {
 
-      console.warn(`无法获取图片分辨率: ${path}`, e);
+      console.warn(`无法获取媒体信息: ${path}`, e);
 
     }
 
@@ -543,17 +563,17 @@ export class GalleryView extends ItemView {
 
         .split(',')
 
-        .map(tag => tag.trim())
+        .map((tag: string) => tag.trim())
 
-        .filter(tag => tag.length > 0);
+        .filter((tag: string) => tag.length > 0);
 
     }
 
     
 
-    // 创建图片数据对象
+    // 创建媒体数据对象
 
-    const imageData: ImageData = {
+    const imageData: MediaData = {
 
       id: imageId,
 
@@ -581,7 +601,9 @@ export class GalleryView extends ItemView {
 
       height: height,
 
-      fileSize: stat.size
+      fileSize: stat.size,
+
+      type: mediaType
 
     };
 
@@ -714,8 +736,20 @@ export class GalleryView extends ItemView {
         tagsHtml += `<span class="image-tag tag-more">+${image.tags.length - 3}</span>`;
       }
       
-      // 使用安全的图片路径获取方法
-      const imagePath = getSafeImagePath(this.app, image.path);
+      // 使用安全的媒体路径获取方法
+      const mediaPath = getSafeImagePath(this.app, image.path);
+      
+      // 根据媒体类型生成不同的预览元素
+      let previewElement = '';
+      if (image.type === 'image') {
+        previewElement = `<img src="${mediaPath}" alt="${image.title}" class="image-preview">`;
+      } else if (image.type === 'video') {
+        previewElement = `<video src="${mediaPath}" class="image-preview" controls></video>`;
+      } else if (image.type === 'audio') {
+        previewElement = `<audio src="${mediaPath}" class="image-preview" controls></audio>`;
+      } else {
+        previewElement = `<img src="${mediaPath}" alt="${image.title}" class="image-preview">`; // 默认作为图片处理
+      }
       
       imageCard.innerHTML = `
 
@@ -723,7 +757,7 @@ export class GalleryView extends ItemView {
 
           <div class="image-preview-container">
 
-            <img src="${imagePath}" alt="${image.title}" class="image-preview">
+            ${previewElement}
 
             <div class="image-overlay">
 
@@ -1047,13 +1081,25 @@ export class GalleryView extends ItemView {
 
   }
 
-  private openImageDetail(image: ImageData) {
-    // 创建模态框显示图片详情
+  private openImageDetail(image: MediaData) {
+    // 创建模态框显示媒体详情
     const modal = this.containerEl.createEl('div', { cls: 'image-detail-modal' });
     
-    // 使用安全的图片路径
+    // 使用安全的媒体路径
 
-    const imagePath = getSafeImagePath(this.app, image.path);
+    const mediaPath = getSafeImagePath(this.app, image.path);
+    
+    // 根据媒体类型生成不同的预览元素
+    let previewElement = '';
+    if (image.type === 'image') {
+      previewElement = `<img src="${mediaPath}" alt="${image.title}">`;
+    } else if (image.type === 'video') {
+      previewElement = `<video src="${mediaPath}" controls style="max-width: 100%; max-height: 70vh;"></video>`;
+    } else if (image.type === 'audio') {
+      previewElement = `<audio src="${mediaPath}" controls style="width: 100%;"></audio>`;
+    } else {
+      previewElement = `<img src="${mediaPath}" alt="${image.title}">`; // 默认作为图片处理
+    }
     
     modal.innerHTML = `
       <div class="modal-backdrop"></div>
@@ -1064,7 +1110,7 @@ export class GalleryView extends ItemView {
         </div>
         <div class="modal-body">
           <div class="modal-image-preview">
-            <img src="${imagePath}" alt="${image.title}">
+            ${previewElement}
           </div>
           <div class="modal-image-info">
             <div class="info-section">

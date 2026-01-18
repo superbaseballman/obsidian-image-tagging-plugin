@@ -1,5 +1,5 @@
 import { ItemView, WorkspaceLeaf, TFile, Notice } from 'obsidian';
-import { ImageData, ImageDataManager } from './image-data-model';
+import { MediaData, ImageDataManager, getMediaType } from './image-data-model';
 import { getImageResolutionWithCache, getImageTaggingPlugin, getSafeImagePath, deleteImageFile } from './utils';
 
 // 右侧边栏视图类型ID
@@ -22,7 +22,7 @@ export class ImageView extends ItemView {
   }
 
   getDisplayText(): string {
-    return '图片信息';
+    return '媒体信息';
   }
 
   getIcon(): string {
@@ -50,7 +50,7 @@ export class ImageView extends ItemView {
     
     // 创建标题
     const header = this.contentEl.createEl('div', { cls: 'image-info-header' });
-    header.createEl('h3', { text: '图片信息' });
+    header.createEl('h3', { text: '媒体信息' });
     
     // 创建信息容器
     this.imageInfoContainer = this.contentEl.createEl('div', { cls: 'image-info-container' });
@@ -58,7 +58,7 @@ export class ImageView extends ItemView {
     // 初始化为空内容
     this.imageInfoContainer.createEl('div', { 
       cls: 'no-image-selected', 
-      text: '在库中选择一个图片文件以查看详细信息' 
+      text: '在库中选择一个媒体文件以查看详细信息' 
     });
   }
 
@@ -66,23 +66,24 @@ export class ImageView extends ItemView {
   async updateForFile(file: TFile | null) {
     this.currentFile = file;
     
-    // 如果没有文件或者文件不是支持的图片格式，则显示提示信息
+    // 如果没有文件或者文件不是支持的媒体格式，则显示提示信息
     if (!file || !this.isSupportedImageFile(file)) {
       this.imageInfoContainer.empty();
       this.imageInfoContainer.createEl('div', { 
         cls: 'no-image-selected', 
-        text: '在库中选择一个图片文件以查看详细信息' 
+        text: '在库中选择一个媒体文件以查看详细信息' 
       });
       return;
     }
 
-    // 获取或创建图片数据
+    // 获取或创建媒体数据
     let imageData = this.imageDataManager.getImageDataByPath(file.path);
     
     if (!imageData) {
       // 如果没有找到数据，则创建默认数据
+      const mediaType = getMediaType(file) || 'image';
       imageData = {
-        id: `img_${Date.now()}_${file.path || file.name}`,
+        id: `media_${Date.now()}_${file.path || file.name}`,
         path: file.path || file.name || '',
         title: file.basename,
         tags: [],
@@ -93,48 +94,83 @@ export class ImageView extends ItemView {
         format: file.extension.toUpperCase(),
         description: '',
         originalName: file.name,
-        lastModified: file.stat.mtime
+        lastModified: file.stat.mtime,
+        type: mediaType
       };
       
-      // 尝试获取图片尺寸
+      // 尝试获取媒体信息
       try {
-        const resolution = await this.getImageResolution(file);
-        imageData.resolution = resolution;
+        if (mediaType === 'image') {
+          const resolution = await this.getImageResolution(file);
+          imageData.resolution = resolution;
+        } else {
+          // 对于视频和音频，暂时保持默认分辨率
+          imageData.resolution = mediaType === 'video' ? '视频文件' : '音频文件';
+        }
       } catch (e) {
-        console.log('无法获取图片分辨率:', e);
+        console.log('无法获取媒体信息:', e);
       }
       
       // 保存新创建的数据
       this.imageDataManager.addImageData(imageData);
     }
 
-    // 渲染图片信息
+    // 渲染媒体信息
     this.renderImageInfo(imageData);
   }
 
-  private renderImageInfo(imageData: ImageData) {
+  private renderImageInfo(imageData: MediaData) {
     this.imageInfoContainer.empty();
     
-    // 验证图片路径
+    // 验证媒体路径
     if (!imageData.path) {
       this.imageInfoContainer.createEl('div', { 
         cls: 'no-image-selected', 
-        text: '图片路径无效' 
+        text: '媒体路径无效' 
       });
       return;
     }
     
-    // 图片预览
+    // 媒体预览
     const previewContainer = this.imageInfoContainer.createEl('div', { cls: 'image-preview-container' });
-    const img = previewContainer.createEl('img', {
-      cls: 'image-preview',
-      attr: {
-        src: getSafeImagePath(this.app, imageData.path),
-        alt: imageData.title
-      }
-    });
     
-    // 图片基本信息
+    // 根据媒体类型创建不同的预览元素
+    if (imageData.type === 'image') {
+      const img = previewContainer.createEl('img', {
+        cls: 'image-preview',
+        attr: {
+          src: getSafeImagePath(this.app, imageData.path),
+          alt: imageData.title
+        }
+      });
+    } else if (imageData.type === 'video') {
+      const video = previewContainer.createEl('video', {
+        cls: 'image-preview',
+        attr: {
+          src: getSafeImagePath(this.app, imageData.path),
+          controls: 'true'
+        }
+      });
+    } else if (imageData.type === 'audio') {
+      const audio = previewContainer.createEl('audio', {
+        cls: 'image-preview',
+        attr: {
+          src: getSafeImagePath(this.app, imageData.path),
+          controls: 'true'
+        }
+      });
+    } else {
+      // 默认作为图片处理
+      const img = previewContainer.createEl('img', {
+        cls: 'image-preview',
+        attr: {
+          src: getSafeImagePath(this.app, imageData.path),
+          alt: imageData.title
+        }
+      });
+    }
+    
+    // 媒体基本信息
     const infoContainer = this.imageInfoContainer.createEl('div', { cls: 'image-details' });
     
     // 标题编辑
@@ -275,7 +311,7 @@ export class ImageView extends ItemView {
     });
   }
   
-  private createTagElement(container: HTMLElement, tag: string, imageData: ImageData) {
+  private createTagElement(container: HTMLElement, tag: string, imageData: MediaData) {
     const tagEl = container.createEl('span', { cls: 'tag-item' });
     tagEl.setText(tag);
     
@@ -304,7 +340,7 @@ export class ImageView extends ItemView {
     });
   }
 
-  private addTag(input: HTMLInputElement, imageData: ImageData, container: HTMLElement) {
+  private addTag(input: HTMLInputElement, imageData: MediaData, container: HTMLElement) {
     const newTag = input.value.trim();
     if (!newTag) return;
     
@@ -328,7 +364,7 @@ export class ImageView extends ItemView {
     }
   }
 
-  private async saveImageInfo(imageData: ImageData, titleInput: HTMLInputElement, descInput: HTMLTextAreaElement) {
+  private async saveImageInfo(imageData: MediaData, titleInput: HTMLInputElement, descInput: HTMLTextAreaElement) {
     // 更新数据
     imageData.title = titleInput.value;
     imageData.description = descInput.value;
@@ -390,7 +426,7 @@ export class ImageView extends ItemView {
     }
   }
 
-  private async deleteImageFile(imageData: ImageData) {
+  private async deleteImageFile(imageData: MediaData) {
     // 确认删除对话框
     const confirmed = confirm(`确定要删除图片 "${imageData.title}" 吗？`);
     

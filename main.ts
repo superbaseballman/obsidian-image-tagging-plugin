@@ -1,5 +1,5 @@
 import { App, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, Notice, Menu } from 'obsidian';
-import { ImageData, ImageTaggingSettings, DEFAULT_SETTINGS, ImageDataManager } from './image-data-model';
+import { MediaData, ImageTaggingSettings, DEFAULT_SETTINGS, ImageDataManager, getMediaType } from './image-data-model';
 import { ImageView, IMAGE_INFO_VIEW_TYPE } from './image-info-view';
 import { GalleryView, GALLERY_VIEW_TYPE } from './gallery-view';
 import { getImageResolutionWithCache, getImageFileFromPath } from './utils';
@@ -40,7 +40,7 @@ export default class ImageTaggingPlugin extends Plugin {
       // 构造自定义菜单
       const menu = new Menu();
       menu.addItem((item: any) => {
-        item.setTitle('显示图片信息').setIcon('image').onClick(async () => {
+        item.setTitle('显示媒体信息').setIcon('image').onClick(async () => {
           // 尝试获取图片 src
           const src = imgEl!.getAttribute('src');
           if (!src) return;
@@ -60,7 +60,7 @@ export default class ImageTaggingPlugin extends Plugin {
             await this.openImageInfoPanel();
             await this.updateImageInfoPanel(file);
           } else {
-            new Notice('未找到图片文件或不支持的图片格式');
+            new Notice('未找到媒体文件或不支持的媒体格式');
           }
         });
       });
@@ -84,20 +84,20 @@ export default class ImageTaggingPlugin extends Plugin {
     // 添加命令
     this.addCommand({
       id: 'open-gallery-view',
-      name: '打开图片图库',
+      name: '打开媒体图库',
       callback: () => {
         this.openGalleryView();
       }
     });
 
     // 添加功能区图标
-    this.addRibbonIcon('image', '打开图片图库', (evt: MouseEvent) => {
+    this.addRibbonIcon('image', '打开媒体图库', (evt: MouseEvent) => {
       this.openGalleryView();
     });
 
     this.addCommand({
       id: 'open-image-info-panel',
-      name: '打开图片信息面板',
+      name: '打开媒体信息面板',
       callback: () => {
         this.openImageInfoPanel();
       }
@@ -105,7 +105,7 @@ export default class ImageTaggingPlugin extends Plugin {
 
     this.addCommand({
       id: 'scan-all-images',
-      name: '扫描库中的所有图片',
+      name: '扫描库中的所有媒体文件',
       callback: () => {
         this.scanAllImages();
       }
@@ -263,7 +263,7 @@ this.registerEvent(
     // 注册文档事件监听器，用于处理所有窗口中的图片右键菜单
     this.registerDocument(document);
 
-    app.workspace.on("window-open", (workspaceWindow, window) => {
+    this.app.workspace.on("window-open", (workspaceWindow: any, window: any) => {
       this.registerDocument(window.document);
     });
   }
@@ -341,7 +341,7 @@ this.registerEvent(
         
         if (!imageData) {
           // 如果不存在，则创建默认数据
-          imageData = this.createDefaultImageData(file);
+          imageData = await this.createDefaultImageData(file);
           this.imageDataManager.addImageData(imageData);
           newImagesCount++;
         }
@@ -362,7 +362,7 @@ this.registerEvent(
 
    */
 
-  private async createDefaultImageData(file: TFile): Promise<ImageData> {
+  private async createDefaultImageData(file: TFile): Promise<MediaData> {
 
     // 获取文件信息
 
@@ -388,25 +388,45 @@ this.registerEvent(
 
     
 
+    const mediaType = getMediaType(file) || 'image';
+
+    
+
     try {
 
-      // 使用缓存的图片分辨率获取方法
+      // 对于图片，使用缓存的图片分辨率获取方法
 
-      const dimensions = await getImageResolutionWithCache(file, this.app);
+      if (mediaType === 'image') {
 
-      if (dimensions) {
+        const dimensions = await getImageResolutionWithCache(file, this.app);
 
-        width = dimensions.width;
+        if (dimensions) {
 
-        height = dimensions.height;
+          width = dimensions.width;
 
-        resolution = dimensions.resolution;
+          height = dimensions.height;
+
+          resolution = dimensions.resolution;
+
+        }
+
+      } else if (mediaType === 'video') {
+
+        // 对于视频，可以尝试获取时长等信息（暂时保持未知）
+
+        resolution = '视频文件';
+
+      } else if (mediaType === 'audio') {
+
+        // 对于音频，可以尝试获取时长等信息（暂时保持未知）
+
+        resolution = '音频文件';
 
       }
 
     } catch (e) {
 
-      console.warn(`无法获取图片分辨率: ${path}`, e);
+      console.warn(`无法获取媒体信息: ${path}`, e);
 
     }
 
@@ -426,7 +446,7 @@ this.registerEvent(
 
     return {
 
-      id: `img_${Date.now()}_${path}`,
+      id: `media_${Date.now()}_${path}`,
 
       path: path,
 
@@ -452,7 +472,9 @@ this.registerEvent(
 
       height: height,
 
-      fileSize: stat.size
+      fileSize: stat.size,
+
+      type: mediaType
 
     };
 
@@ -729,7 +751,7 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
   async scanAllImages() {
 
-    new Notice('开始扫描图片文件...');
+    new Notice('开始扫描媒体文件...');
 
     
 
@@ -751,7 +773,7 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
     } else if (this.settings.scanFolderPath && this.settings.scanFolderPath.trim() !== '') {
 
-      // 如果新的设置为空，但旧的设置有值，则使用旧设置
+      // 如果新的设置为空，但旧设置有值，则使用旧设置
 
       folderPathsToUse = [this.normalizePath(this.settings.scanFolderPath)];
 
@@ -769,7 +791,7 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
     
 
-    let imageCount = 0;
+    let mediaCount = 0;
 
     
 
@@ -783,11 +805,11 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
           // 如果不存在，则创建默认数据
 
-          const imageData = await this.createDefaultImageData(file);
+          const mediaData = await this.createDefaultImageData(file);
 
-          this.imageDataManager.addImageData(imageData);
+          this.imageDataManager.addImageData(mediaData);
 
-          imageCount++;
+          mediaCount++;
 
         }
 
@@ -797,13 +819,13 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
     
 
-    if (imageCount > 0) {
+    if (mediaCount > 0) {
 
       await this.saveDataToFile();
 
     }
 
-    new Notice(`扫描完成！新增了 ${imageCount} 个图片记录`);
+    new Notice(`扫描完成！新增了 ${mediaCount} 个媒体记录`);
 
   }
 
@@ -924,17 +946,21 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
       leaf = leaves[0];
     } else {
       leaf = workspace.getRightLeaf(false);
-      await leaf.setViewState({ type: IMAGE_INFO_VIEW_TYPE, active: true });
+      if (leaf) {
+        await leaf.setViewState({ type: IMAGE_INFO_VIEW_TYPE, active: true });
+      }
     }
 
-    workspace.revealLeaf(leaf);
-    
-    // 如果当前有打开的文件，更新视图
-    // 确保视图是ImageView类型的实例后再调用updateForFile方法
-    if (leaf.view instanceof ImageView) {
-      const activeFile = this.app.workspace.getActiveFile();
-      const view = leaf.view as ImageView;
-      await view.updateForFile(activeFile);
+    if (leaf) {
+      workspace.revealLeaf(leaf);
+      
+      // 如果当前有打开的文件，更新视图
+      // 确保视图是ImageView类型的实例后再调用updateForFile方法
+      if (leaf.view instanceof ImageView) {
+        const activeFile = this.app.workspace.getActiveFile();
+        const view = leaf.view as ImageView;
+        await view.updateForFile(activeFile);
+      }
     }
   }
 
