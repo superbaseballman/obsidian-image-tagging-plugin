@@ -18,30 +18,53 @@ export interface ImageData {
   fileSize?: number;       // 文件大小 (以字节为单位，可选)
 }
 
-// 插件设置接口
-export interface ImageTaggingSettings {
-  jsonStoragePath: string;
-  categories: string[];
-  supportedFormats: string[];
-  showInFileExplorer: boolean;
-  autoTagOnImport: boolean;
-  autoTagOnImportValue: string; // 自定义导入标签值
-  enableGalleryView: boolean;
-  scanFolderPath: string; // 保持原有字段用于兼容性
-  scanMultipleFolderPaths: string[]; // 新增：支持多个扫描文件夹路径
+// 插件设置接口
+
+export interface ImageTaggingSettings {
+
+  jsonStoragePath: string;
+
+  categories: string[];
+
+  supportedFormats: string[];
+
+  showInFileExplorer: boolean;
+
+  autoTagOnImport: boolean;
+
+  autoTagOnImportValue: string; // 自定义导入标签值
+
+  enableGalleryView: boolean;
+
+  scanFolderPath: string; // 保持原有字段用于兼容性
+
+  scanMultipleFolderPaths: string[]; // 新增：支持多个扫描文件夹路径
+
+  recentTags: string[]; // 最近使用的标签
 }
 
-// 默认设置
-export const DEFAULT_SETTINGS: ImageTaggingSettings = {
-  jsonStoragePath: '.obsidian/image-tags.json',
-  categories: ['全部图片', '风景', '人物', '建筑', '美食', '植物', '动物', '艺术'],
-  supportedFormats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'],
-  showInFileExplorer: true,
-  autoTagOnImport: false,
-  autoTagOnImportValue: '', // 默认没有自定义标签
-  enableGalleryView: true,
-  scanFolderPath: '',  // 默认为空，用户需要手动设置
-  scanMultipleFolderPaths: [] // 默认为空数组
+// 默认设置 
+
+export const DEFAULT_SETTINGS: ImageTaggingSettings = {
+
+  jsonStoragePath: '.obsidian/image-tags.json',
+
+  categories: ['全部图片', '风景', '人物', '建筑', '美食', '植物', '动物', '艺术'],
+
+  supportedFormats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'],
+
+  showInFileExplorer: true,
+
+  autoTagOnImport: false,
+
+  autoTagOnImportValue: '', // 默认没有自定义标签
+
+  enableGalleryView: true,
+
+  scanFolderPath: '',  // 默认为空，用户需要手动设置
+
+  scanMultipleFolderPaths: [], // 默认为空数组
+  recentTags: [], // 默认没有最近使用的标签
 };
 
 // 图片文件类型检查辅助函数
@@ -50,21 +73,31 @@ export function isSupportedImageFile(file: TFile, settings: ImageTaggingSettings
   return settings.supportedFormats.includes(extension);
 }
 
-// 数据管理器类
-export class ImageDataManager {
-  private data: Map<string, ImageData> = new Map();
-  private pathToIdMap: Map<string, string> = new Map(); // 添加路径到ID的映射以提高查找效率
+// 数据管理器类 
+
+export class ImageDataManager {
+  private data: Map<string, ImageData> = new Map();
+  private pathToIdMap: Map<string, string> = new Map(); // 添加路径到ID的映射以提高查找效率
+  private recentTags: string[] = [];
+  private maxRecentTags: number = 20; // 限制最近标签数量
   
-  // 添加或更新图片数据
-  addImageData(imageData: ImageData): void {
-    // 如果之前存在相同路径的数据，先删除旧的路径映射
-    const existingData = this.data.get(imageData.id);
-    if (existingData && existingData.path !== imageData.path) {
-      this.pathToIdMap.delete(existingData.path);
-    }
-    
-    this.data.set(imageData.id, imageData);
-    this.pathToIdMap.set(imageData.path, imageData.id); // 添加路径到ID的映射
+  constructor(recentTags: string[] = []) {
+    this.recentTags = recentTags;
+  }
+  
+  // 添加或更新图片数据
+  addImageData(imageData: ImageData): void {
+    // 如果之前存在相同路径的数据，先删除旧的路径映射
+    const existingData = this.data.get(imageData.id);
+    if (existingData && existingData.path !== imageData.path) {
+      this.pathToIdMap.delete(existingData.path);
+    }
+    
+    this.data.set(imageData.id, imageData);
+    this.pathToIdMap.set(imageData.path, imageData.id); // 添加路径到ID的映射
+    
+    // 更新最近使用的标签
+    this.updateRecentTags(imageData.tags);
   }
   
   // 获取图片数据
@@ -77,22 +110,22 @@ export class ImageDataManager {
     return Array.from(this.data.values());
   }
   
-  // 删除图片数据
-  removeImageData(id: string): boolean {
-    const imageData = this.data.get(id);
-    if (imageData) {
-      this.pathToIdMap.delete(imageData.path); // 同时删除路径映射
-    }
-    return this.data.delete(id);
+  // 删除图片数据
+  removeImageData(id: string): boolean {
+    const imageData = this.data.get(id);
+    if (imageData) {
+      this.pathToIdMap.delete(imageData.path); // 同时删除路径映射
+    }
+    return this.data.delete(id);
   }
   
-  // 根据路径获取图片数据
-  getImageDataByPath(path: string): ImageData | undefined {
-    const id = this.pathToIdMap.get(path);
-    if (id) {
-      return this.data.get(id);
-    }
-    return undefined;
+  // 根据路径获取图片数据
+  getImageDataByPath(path: string): ImageData | undefined {
+    const id = this.pathToIdMap.get(path);
+    if (id) {
+      return this.data.get(id);
+    }
+    return undefined;
   }
   
   // 搜索包含特定标签的图片
@@ -128,25 +161,42 @@ export class ImageDataManager {
       .slice(0, limit);
   }
   
-  // 从 JSON 导入数据
-  importFromJSON(jsonData: string): void {
-    try {
-      const parsed = JSON.parse(jsonData);
-      if (Array.isArray(parsed)) {
-        this.data.clear();
-        this.pathToIdMap.clear(); // 清空路径映射
-        for (const item of parsed) {
-          // 验证数据结构
-          if (this.isValidImageData(item)) {
-            this.data.set(item.id, item);
-            this.pathToIdMap.set(item.path, item.id); // 添加路径映射
-          }
-        }
-      }
-    } catch (error) {
-      console.error('导入 JSON 数据失败:', error);
-      throw error;
-    }
+  // 更新最近使用的标签
+  private updateRecentTags(tags: string[]) {
+    for (const tag of tags) {
+      // 移除标签（如果已经存在于最近标签列表中）
+      this.recentTags = this.recentTags.filter(t => t !== tag);
+      // 将标签添加到开头
+      this.recentTags.unshift(tag);
+    }
+    // 限制最近标签的数量
+    this.recentTags = this.recentTags.slice(0, this.maxRecentTags);
+  }
+  
+  // 获取最近使用的标签
+  getRecentTags(): string[] {
+    return [...this.recentTags]; // 返回副本
+  }
+  
+  // 从 JSON 导入数据
+  importFromJSON(jsonData: string): void {
+    try {
+      const parsed = JSON.parse(jsonData);
+      if (Array.isArray(parsed)) {
+        this.data.clear();
+        this.pathToIdMap.clear(); // 清空路径映射
+        for (const item of parsed) {
+          // 验证数据结构
+          if (this.isValidImageData(item)) {
+            this.data.set(item.id, item);
+            this.pathToIdMap.set(item.path, item.id); // 添加路径映射
+          }
+        }
+      }
+    } catch (error) {
+      console.error('导入 JSON 数据失败:', error);
+      throw error;
+    }
   }
   
   // 导出到 JSON

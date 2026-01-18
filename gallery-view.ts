@@ -1084,6 +1084,12 @@ export class GalleryView extends ItemView {
                 <input type="text" class="new-tag-input" placeholder="添加新标签...">
                 <button class="add-tag-btn">添加</button>
               </div>
+              <div class="recent-tags-section">
+                <label>最近使用</label>
+                <div class="recent-tags-list">
+                  <!-- 最近使用的标签将在这里显示 -->
+                </div>
+              </div>
             </div>
             <div class="info-section file-info-section">
 
@@ -1129,6 +1135,80 @@ export class GalleryView extends ItemView {
     const addTagBtn = modal.querySelector('.add-tag-btn');
     const newTagInput = modal.querySelector('.new-tag-input') as HTMLInputElement;
     const currentTagsContainer = modal.querySelector('.current-tags');
+    const recentTagsContainer = modal.querySelector('.recent-tags-list') as HTMLElement;
+    const suggestionsContainer = modal.querySelector('.tag-suggestions-container') as HTMLElement;
+    
+    // 显示最近使用的标签
+    const recentTags = this.imageDataManager.getRecentTags();
+    if (recentTags.length > 0) {
+      recentTags.forEach(tag => {
+        const recentTagEl = document.createElement('span');
+        recentTagEl.className = 'recent-tag-item';
+        recentTagEl.textContent = tag;
+        
+        // 检查当前图片是否已包含此最近使用的标签，如果是，则标记为选中状态
+        if (image.tags.includes(tag)) {
+          recentTagEl.classList.add('selected');
+        }
+        
+        recentTagEl.addEventListener('click', () => {
+          if (!image.tags.includes(tag)) {
+            // 添加标签
+            image.tags.push(tag);
+            
+            // 更新当前标签显示
+            const newTagEl = document.createElement('span');
+            newTagEl.className = 'current-tag';
+            newTagEl.innerHTML = `${tag} <span class="remove-tag" data-tag="${tag}">×</span>`;
+            
+            const removeBtn = newTagEl.querySelector('.remove-tag');
+            removeBtn?.addEventListener('click', (e) => {
+              const tagValue = (e.target as HTMLElement).dataset.tag;
+              if (tagValue) {
+                image.tags = image.tags.filter(t => t !== tagValue);
+                newTagEl.remove();
+                
+                // 更新UI状态
+                const allRecentTagEls = recentTagsContainer.querySelectorAll('.recent-tag-item');
+                for (let i = 0; i < allRecentTagEls.length; i++) {
+                  if (allRecentTagEls[i].textContent === tagValue) {
+                    allRecentTagEls[i].classList.remove('selected');
+                    break;
+                  }
+                }
+              }
+            });
+            
+            currentTagsContainer?.appendChild(newTagEl);
+            
+            // 更新UI状态
+            recentTagEl.classList.add('selected');
+          } else {
+            // 移除标签
+            image.tags = image.tags.filter(t => t !== tag);
+            
+            // 从当前标签显示中移除
+            const currentTagEls = currentTagsContainer?.querySelectorAll('.current-tag') || [];
+            for (let i = 0; i < currentTagEls.length; i++) {
+              const currentTagEl = currentTagEls[i];
+              const tagText = currentTagEl.textContent?.split('×')[0]?.trim();
+              if (tagText === tag) {
+                currentTagEl.remove();
+                break;
+              }
+            }
+            
+            // 更新UI状态
+            recentTagEl.classList.remove('selected');
+          }
+        });
+        
+        recentTagsContainer.appendChild(recentTagEl);
+      });
+    } else {
+      const noRecentTagsEl = recentTagsContainer.createEl('span', { text: '暂无最近使用标签' });
+      noRecentTagsEl.addClass('no-recent-tags');
+    }
     
     const addTag = () => {
       if (newTagInput && newTagInput.value.trim()) {
@@ -1156,6 +1236,7 @@ export class GalleryView extends ItemView {
     };
     
     addTagBtn?.addEventListener('click', addTag);
+    
     newTagInput?.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') {
         addTag();

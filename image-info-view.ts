@@ -176,26 +176,69 @@ export class ImageView extends ItemView {
       text: '添加'
     });
     
-    // 文件信息
-    const fileInfoContainer = infoContainer.createEl('div', { cls: 'info-item file-info' });
-    fileInfoContainer.createEl('label', { text: '文件信息' });
+    // 最近使用的标签部分
+    const recentTagsContainer = tagsContainer.createEl('div', { cls: 'recent-tags-container' });
+    const recentTagsLabel = recentTagsContainer.createEl('label', { text: '最近使用' });
     
-    const fileInfo = fileInfoContainer.createEl('div', { cls: 'file-properties' });
-    // 创建可点击的路径链接
-    const pathContainer = fileInfo.createEl('p');
-    pathContainer.createEl('span', { text: '路径: ' });
-    const pathLink = pathContainer.createEl('a', {
-      text: imageData.path,
-      cls: 'file-path-link'
+    const recentTagsList = recentTagsContainer.createEl('div', { cls: 'recent-tags-list' });
+    
+    // 获取最近使用的标签并显示
+    const recentTags = this.imageDataManager.getRecentTags();
+    recentTags.forEach(tag => {
+      const recentTagEl = recentTagsList.createEl('span', { 
+        cls: 'recent-tag-item', 
+        text: tag 
+      });
+      
+      recentTagEl.addEventListener('click', () => {
+        if (!imageData.tags.includes(tag)) {
+          // 添加标签
+          imageData.tags.push(tag);
+          this.createTagElement(tagsList, tag, imageData);
+          
+          // 更新最近使用的标签
+          this.imageDataManager.addImageData(imageData);
+          
+          // 更新UI状态
+          recentTagEl.addClass('selected');
+        } else {
+          // 移除标签
+          imageData.tags = imageData.tags.filter(t => t !== tag);
+          
+          // 从标签列表中移除对应的标签元素
+          const tagElements = tagsList.querySelectorAll('.tag-item');
+          for (let i = 0; i < tagElements.length; i++) {
+            const tagEl = tagElements[i] as HTMLElement;
+            // 检查标签文本是否匹配（注意需要去除可能的删除按钮文本）
+            const tagText = tagEl.innerText.split('×')[0]?.trim();
+            if (tagText === tag) {
+              tagEl.remove();
+              break;
+            }
+          }
+          
+          // 更新最近使用的标签
+          this.imageDataManager.addImageData(imageData);
+          
+          // 更新UI状态
+          recentTagEl.removeClass('selected');
+        }
+      });
+      
+      // 检查当前图片是否已包含此最近使用的标签，如果是，则标记为选中状态
+      if (imageData.tags.includes(tag)) {
+        recentTagEl.addClass('selected');
+      }
     });
-    pathLink.addEventListener('click', (e) => {
-      e.preventDefault();
-      this.openImageFile(imageData.path);
-    });
-    fileInfo.createEl('p', { text: `大小: ${imageData.size}` });
-    fileInfo.createEl('p', { text: `格式: ${imageData.format}` });
-    fileInfo.createEl('p', { text: `分辨率: ${imageData.resolution}` });
-    fileInfo.createEl('p', { text: `修改时间: ${new Date(imageData.lastModified).toLocaleString()}` });
+    
+    // 如果没有最近使用的标签，显示提示
+    if (recentTags.length === 0) {
+      recentTagsList.createEl('span', { 
+        cls: 'no-recent-tags', 
+        text: '暂无最近使用标签' 
+      });
+    }
+    
     
     // 保存按钮
     const saveBtn = infoContainer.createEl('button', {
@@ -206,7 +249,7 @@ export class ImageView extends ItemView {
     // 删除按钮
     const deleteBtn = infoContainer.createEl('button', {
       cls: 'delete-image-btn',
-      text: '删除文件',
+      text: '删除图片文件',
       attr: {
         style: 'background-color: #da3633; border-color: #ff7b72; color: white; margin-top: 10px;'
       }
@@ -232,8 +275,6 @@ export class ImageView extends ItemView {
     });
   }
   
-  
-
   private createTagElement(container: HTMLElement, tag: string, imageData: ImageData) {
     const tagEl = container.createEl('span', { cls: 'tag-item' });
     tagEl.setText(tag);
@@ -247,6 +288,19 @@ export class ImageView extends ItemView {
       e.stopPropagation();
       imageData.tags = imageData.tags.filter(t => t !== tag);
       tagEl.remove();
+      
+      // 更新最近使用标签的状态
+      const recentTagElements = this.imageInfoContainer.querySelectorAll('.recent-tag-item');
+      for (let i = 0; i < recentTagElements.length; i++) {
+        const recentTagEl = recentTagElements[i] as HTMLElement;
+        if (recentTagEl.innerText === tag) {
+          recentTagEl.removeClass('selected');
+          break;
+        }
+      }
+      
+      // 更新最近使用的标签
+      this.imageDataManager.addImageData(imageData);
     });
   }
 
@@ -258,6 +312,19 @@ export class ImageView extends ItemView {
       imageData.tags.push(newTag);
       this.createTagElement(container, newTag, imageData);
       input.value = '';
+      
+      // 更新最近使用的标签
+      this.imageDataManager.addImageData(imageData);
+      
+      // 更新最近使用标签的UI状态
+      const recentTagElements = this.imageInfoContainer.querySelectorAll('.recent-tag-item');
+      for (let i = 0; i < recentTagElements.length; i++) {
+        const recentTagEl = recentTagElements[i] as HTMLElement;
+        if (recentTagEl.innerText === newTag) {
+          recentTagEl.addClass('selected');
+          break;
+        }
+      }
     }
   }
 
