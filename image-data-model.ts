@@ -1,5 +1,7 @@
 // image-data-model.ts - 媒体数据模型定义
-import { TFile } from 'obsidian';
+import { TFile, App } from 'obsidian';
+import { Logger } from './logger';
+import { DEFAULT_JSON_STORAGE_PATH, DEFAULT_SUPPORTED_FORMATS, DEFAULT_CATEGORIES } from './constants';
 
 export interface MediaData {
   id: string;              // 唯一标识符
@@ -51,11 +53,11 @@ export interface ImageTaggingSettings {
 
 export const DEFAULT_SETTINGS: ImageTaggingSettings = {
 
-  jsonStoragePath: '.obsidian/image-tags.json',
+  jsonStoragePath: DEFAULT_JSON_STORAGE_PATH,
 
-  categories: ['全部媒体', '风景', '人物', '建筑', '美食', '植物', '动物', '艺术', '视频', '音频'],
+  categories: DEFAULT_CATEGORIES,
 
-  supportedFormats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'mp4', 'avi', 'mov', 'mkv', 'webm', 'mp3', 'wav', 'flac', 'aac', 'ogg'],
+  supportedFormats: DEFAULT_SUPPORTED_FORMATS,
 
   showInFileExplorer: true,
 
@@ -68,7 +70,7 @@ export const DEFAULT_SETTINGS: ImageTaggingSettings = {
   scanFolderPath: '',  // 默认为空，用户需要手动设置
 
   scanMultipleFolderPaths: [], // 默认为空数组
-  recentTags: [], // 默认没有最近使用的标签
+  recentTags: [], // 默认没有最近使用的标签,
 };
 
 // 媒体文件类型检查辅助函数
@@ -214,7 +216,7 @@ export class ImageDataManager {
         }
       }
     } catch (error) {
-      console.error('导入 JSON 数据失败:', error);
+      Logger.error('导入 JSON 数据失败:', error);
       throw error;
     }
   }
@@ -225,22 +227,27 @@ export class ImageDataManager {
   }
   
   // 验证数据结构
-  private isValidImageData(data: any): data is MediaData {
+  private isValidImageData(data: unknown): data is MediaData {
+    if (typeof data !== 'object' || data === null) {
+      return false;
+    }
+    
+    const obj = data as Record<string, unknown>;
+    
     return (
-      typeof data === 'object' &&
-      typeof data.id === 'string' &&
-      typeof data.path === 'string' &&
-      typeof data.title === 'string' &&
-      Array.isArray(data.tags) &&
-      data.tags.every((tag: any) => typeof tag === 'string') &&
-      typeof data.date === 'string' &&
-      typeof data.description === 'string' &&
-      (data.type === 'image' || data.type === 'video' || data.type === 'audio')
+      typeof obj.id === 'string' &&
+      typeof obj.path === 'string' &&
+      typeof obj.title === 'string' &&
+      Array.isArray(obj.tags) &&
+      obj.tags.every((tag: unknown) => typeof tag === 'string') &&
+      typeof obj.date === 'string' &&
+      typeof obj.description === 'string' &&
+      (obj.type === 'image' || obj.type === 'video' || obj.type === 'audio')
     );
   }
 
   // 清理失效的媒体数据
-  public cleanupInvalidImages(app: any, scanFolderPath?: string, scanMultipleFolderPaths?: string[]): number {
+  public cleanupInvalidImages(app: App, scanFolderPath?: string, scanMultipleFolderPaths?: string[]): number {
     let removedCount = 0;
     const validData = new Map<string, MediaData>();
     const validPathToIdMap = new Map<string, string>();
@@ -285,7 +292,7 @@ export class ImageDataManager {
       } else {
         // 文件不存在或不在扫描路径内，跳过（相当于删除）
         removedCount++;
-        console.log(`清理媒体数据: ${mediaData.path}`);
+        Logger.debug(`清理媒体数据: ${mediaData.path}`);
       }
     }
 

@@ -1,17 +1,16 @@
 import { ItemView, WorkspaceLeaf, TFile, Notice } from 'obsidian';
-import { MediaData, ImageDataManager, getMediaType } from './image-data-model';
+import { MediaData, ImageTaggingSettings, ImageDataManager, getMediaType } from './image-data-model';
 import { getImageResolutionWithCache, getImageTaggingPlugin, getSafeImagePath, deleteImageFile } from './utils';
-
-// 右侧边栏视图类型ID
-export const IMAGE_INFO_VIEW_TYPE = 'image-info-view';
+import { Logger } from './logger';
+import { IMAGE_INFO_VIEW_TYPE } from './constants';
 
 export class ImageView extends ItemView {
   private imageDataManager: ImageDataManager;
   private currentFile: TFile | null = null;
   private imageInfoContainer: HTMLElement;
-  private settings: any;
+  private settings: ImageTaggingSettings;
 
-  constructor(leaf: WorkspaceLeaf, imageDataManager: ImageDataManager, settings: any) {
+  constructor(leaf: WorkspaceLeaf, imageDataManager: ImageDataManager, settings: ImageTaggingSettings) {
     super(leaf);
     this.imageDataManager = imageDataManager;
     this.settings = settings;
@@ -107,10 +106,9 @@ export class ImageView extends ItemView {
           // 对于视频和音频，暂时保持默认分辨率
           imageData.resolution = mediaType === 'video' ? '视频文件' : '音频文件';
         }
-      } catch (e) {
-        console.log('无法获取媒体信息:', e);
-      }
-      
+          } catch (e) {
+            Logger.debug('无法获取媒体信息:', e);
+          }      
       // 保存新创建的数据
       this.imageDataManager.addImageData(imageData);
     }
@@ -407,7 +405,7 @@ export class ImageView extends ItemView {
       }
       return '未知';
     } catch (e) {
-      console.warn(`无法获取图片分辨率: ${file.path}`, e);
+      Logger.warn(`无法获取图片分辨率: ${file.path}`, e);
       return '未知';
     }
   }
@@ -447,7 +445,7 @@ export class ImageView extends ItemView {
         new Notice('删除失败，请查看控制台获取更多信息');
       }
     } catch (error) {
-      console.error('删除图片文件时发生错误:', error);
+      Logger.error('删除图片文件时发生错误:', error);
       new Notice(`删除失败: ${error.message}`);
     }
   }

@@ -1,14 +1,16 @@
 import { App, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, Notice, Menu } from 'obsidian';
 import { MediaData, ImageTaggingSettings, DEFAULT_SETTINGS, ImageDataManager, getMediaType } from './image-data-model';
-import { ImageView, IMAGE_INFO_VIEW_TYPE } from './image-info-view';
-import { GalleryView, GALLERY_VIEW_TYPE } from './gallery-view';
+import { ImageView } from './image-info-view';
+import { GalleryView } from './gallery-view';
 import { getImageResolutionWithCache, getImageFileFromPath } from './utils';
+import { Logger, LogLevel } from './logger';
+import { GALLERY_VIEW_TYPE, IMAGE_INFO_VIEW_TYPE, DEFAULT_JSON_STORAGE_PATH, DEFAULT_SUPPORTED_FORMATS, DEFAULT_CATEGORIES } from './constants';
 
 // 导入样式
 import './styles.css';
 
 interface Listener {
-  (this: Document, ev: Event): any;
+  (this: Document, ev: Event): void;
 }
 
 export default class ImageTaggingPlugin extends Plugin {
@@ -39,21 +41,22 @@ export default class ImageTaggingPlugin extends Plugin {
 
       // 构造自定义菜单
       const menu = new Menu();
-      menu.addItem((item: any) => {
+      menu.addItem((item) => {
         item.setTitle('显示媒体信息').setIcon('image').onClick(async () => {
           // 尝试获取图片 src
           const src = imgEl!.getAttribute('src');
           if (!src) return;
           // 解析 src，找到 vault 内的图片文件
-          let file: any = null;
+          let file: TFile | null = null;
           // Obsidian 通常图片 src 以 app:// 或 vault 路径开头
           if (src.startsWith('app://')) {
             // 通过 Obsidian API 查找 TFile
             const files = this.app.vault.getFiles();
-            file = files.find(f => (this.app.vault.getResourcePath(f) === src));
+            file = files.find(f => (this.app.vault.getResourcePath(f) === src)) || null;
           } else {
             // 可能是相对路径
-            file = this.app.vault.getAbstractFileByPath(src);
+            const abstractFile = this.app.vault.getAbstractFileByPath(src);
+            file = abstractFile instanceof TFile ? abstractFile : null;
           }
           if (file && this.isSupportedImageFile(file)) {
             // 打开 image-info-view 并显示该图片
@@ -151,7 +154,7 @@ this.registerEvent(
 
             this.saveDataToFile();
 
-            console.log(`已清理已删除图片的数据: ${file.path}`);
+            Logger.debug(`已清理已删除图片的数据: ${file.path}`);
 
           }
 
@@ -189,7 +192,7 @@ this.registerEvent(
 
             this.saveDataToFile();
 
-            console.log(`已更新重命名图片的路径: ${oldPath} -> ${file.path}`);
+            Logger.debug(`已更新重命名图片的路径: ${oldPath} -> ${file.path}`);
 
           }
 
@@ -207,7 +210,7 @@ this.registerEvent(
 
     // 在编辑器的原生右键菜单中加入“查看图片信息”项
     this.registerEvent(
-      this.app.workspace.on('editor-menu', (menu: Menu, editor: any, view: any) => {
+      this.app.workspace.on('editor-menu', (menu: Menu, editor, view) => {
         try {
           if (!editor) return;
           const cursor = editor.getCursor();
@@ -255,7 +258,7 @@ this.registerEvent(
           }
         } catch (err) {
           // 忽略错误以免影响原生菜单
-          console.error('editor-menu 处理出错:', err);
+          Logger.error('editor-menu 处理出错:', err);
         }
       })
     );
@@ -263,7 +266,7 @@ this.registerEvent(
     // 注册文档事件监听器，用于处理所有窗口中的图片右键菜单
     this.registerDocument(document);
 
-    this.app.workspace.on("window-open", (workspaceWindow: any, window: any) => {
+    this.app.workspace.on("window-open", (workspaceWindow, window) => {
       this.registerDocument(window.document);
     });
   }
@@ -301,8 +304,9 @@ this.registerEvent(
       this.registerEvent(
         this.app.workspace.on('active-leaf-change', (leaf) => {
           if (leaf && leaf.view && (leaf.view as any).contentEl) {
-            (leaf.view as any).contentEl.removeEventListener('click', clickEventHandler);
-            (leaf.view as any).contentEl.addEventListener('click', clickEventHandler);
+            const viewContentEl = (leaf.view as any).contentEl as HTMLElement;
+            viewContentEl.removeEventListener('click', clickEventHandler);
+            viewContentEl.addEventListener('click', clickEventHandler);
           }
         })
       );
@@ -310,7 +314,8 @@ this.registerEvent(
       // 为当前已打开的编辑器添加监听器
       this.app.workspace.iterateAllLeaves((leaf) => {
         if (leaf.view && (leaf.view as any).contentEl) {
-          (leaf.view as any).contentEl.addEventListener('click', clickEventHandler);
+          const viewContentEl = (leaf.view as any).contentEl as HTMLElement;
+          viewContentEl.addEventListener('click', clickEventHandler);
         }
       });
     });
@@ -424,11 +429,11 @@ this.registerEvent(
 
       }
 
-    } catch (e) {
+        } catch (e) {
 
-      console.warn(`无法获取媒体信息: ${path}`, e);
+          Logger.warn(`无法获取媒体信息: ${path}`, e);
 
-    }
+        }
 
     
 
@@ -517,7 +522,7 @@ this.registerEvent(
       // 去除重复路径
       return Array.from(new Set(imagePaths));
     } catch (error) {
-      console.error(`提取图片路径时出错 (${activeFile.path}):`, error);
+      Logger.error(`提取图片路径时出错 (${activeFile.path}):`, error);
       new Notice('错误：提取图片链接失败。');
       return [];
     }
@@ -535,7 +540,7 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
       decodedPath = decodeURIComponent(decodedPath);
     } catch (e) {
       // 如果解码失败，使用原始路径
-      console.warn('Failed to decode URI component:', imagePath, e);
+      Logger.warn('Failed to decode URI component:', imagePath, e);
     }
     
     const cleanPath = decodedPath;
@@ -623,10 +628,9 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
           if (!(await this.app.vault.adapter.exists(currentPath))) {
 
-            await this.app.vault.adapter.mkdir(currentPath);
-
-            console.log(`创建目录: ${currentPath}`);
-
+                      await this.app.vault.adapter.mkdir(currentPath);
+            
+                      Logger.debug(`创建目录: ${currentPath}`);
           }
 
         }
@@ -651,7 +655,7 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
         this.settings.jsonStoragePath = DEFAULT_SETTINGS.jsonStoragePath;
 
-        console.warn('JSON存储路径为空，使用默认路径:', this.settings.jsonStoragePath);
+        Logger.warn('JSON存储路径为空，使用默认路径:', this.settings.jsonStoragePath);
 
       }
 
@@ -663,13 +667,12 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
         this.imageDataManager.importFromJSON(jsonData);
 
-        console.log('图片标签数据加载成功:', this.settings.jsonStoragePath);
-
-        new Notice('图片标签数据加载成功。');
-
+              Logger.info('图片标签数据加载成功:', this.settings.jsonStoragePath);
+        
+              new Notice('图片标签数据加载成功。');
       } else {
 
-        console.log('JSON数据文件不存在，将创建新文件:', this.settings.jsonStoragePath);
+        Logger.info('JSON数据文件不存在，将创建新文件:', this.settings.jsonStoragePath);
 
         // 确保目录存在
 
@@ -683,9 +686,9 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
     } catch (error) {
 
-      console.error('加载图片标签数据失败:', error);
+      Logger.error('加载图片标签数据失败:', error);
 
-      console.error('尝试加载的路径:', this.settings.jsonStoragePath);
+      Logger.error('尝试加载的路径:', this.settings.jsonStoragePath);
 
       new Notice('加载图片标签数据失败，已初始化空数据。');
 
@@ -707,7 +710,7 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
         this.settings.jsonStoragePath = DEFAULT_SETTINGS.jsonStoragePath;
 
-        console.warn('JSON存储路径为空，使用默认路径:', this.settings.jsonStoragePath);
+        Logger.warn('JSON存储路径为空，使用默认路径:', this.settings.jsonStoragePath);
 
         await this.saveSettings(); // 保存修正后的设置
 
@@ -729,13 +732,13 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
       // 注意：使用 adapter.write 避免了触发文件事件，是存储插件私有数据的好方法
 
-      console.log('图片标签数据保存成功:', this.settings.jsonStoragePath);
+      Logger.info('图片标签数据保存成功:', this.settings.jsonStoragePath);
 
     } catch (error) {
 
-      console.error('保存图片标签数据失败:', error);
+      Logger.error('保存图片标签数据失败:', error);
 
-      console.error('尝试保存的路径:', this.settings.jsonStoragePath);
+      Logger.error('尝试保存的路径:', this.settings.jsonStoragePath);
 
       new Notice('保存图片标签数据失败');
 
@@ -743,89 +746,123 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
   }
 
-  /**
+    /**
 
-   * 扫描 Vault 中的所有图片，并为新图片创建数据记录。
+     * 扫描 Vault 中的所有图片，并为新图片创建数据记录。
 
-   */
+     */
 
-  async scanAllImages() {
+    async scanAllImages() {
 
-    new Notice('开始扫描媒体文件...');
+  
 
-    
+      new Notice('开始扫描媒体文件...');
 
-    let allFiles = this.app.vault.getFiles();
+  
 
-    
+      let allFiles = this.app.vault.getFiles();
 
-    // 处理文件夹路径：优先使用新的多文件夹设置，如果为空则使用旧的单文件夹设置
+  
 
-    let folderPathsToUse: string[] = [];
+      // 处理文件夹路径：优先使用新的多文件夹设置，如果为空则使用旧的单文件夹设置
 
-    
+      let folderPathsToUse: string[] = [];
 
-    // 检查是否有新的多个文件夹路径设置
+  
 
-    if (this.settings.scanMultipleFolderPaths && this.settings.scanMultipleFolderPaths.length > 0) {
+      // 检查是否有新的多个文件夹路径设置
 
-      folderPathsToUse = this.settings.scanMultipleFolderPaths.map(path => this.normalizePath(path));
+      if (this.settings.scanMultipleFolderPaths && this.settings.scanMultipleFolderPaths.length > 0) {
 
-    } else if (this.settings.scanFolderPath && this.settings.scanFolderPath.trim() !== '') {
+        folderPathsToUse = this.settings.scanMultipleFolderPaths.map(path => this.normalizePath(path));
 
-      // 如果新的设置为空，但旧设置有值，则使用旧设置
+      } else if (this.settings.scanFolderPath && this.settings.scanFolderPath.trim() !== '') {
 
-      folderPathsToUse = [this.normalizePath(this.settings.scanFolderPath)];
+        // 如果新的设置为空，但旧设置有值，则使用旧设置
 
-    }
+        folderPathsToUse = [this.normalizePath(this.settings.scanFolderPath)];
 
-    
+      }
 
-    // 如果设置了扫描文件夹路径，则只扫描这些文件夹中的文件
+  
 
-    if (folderPathsToUse.length > 0) {
+      // 如果设置了扫描文件夹路径，则只扫描这些文件夹中的文件
 
-      allFiles = allFiles.filter(file => this.isFileInFolder(file.path, folderPathsToUse));
+      if (folderPathsToUse.length > 0) {
 
-    }
+        allFiles = allFiles.filter(file => this.isFileInFolder(file.path, folderPathsToUse));
 
-    
+      }
 
-    let mediaCount = 0;
+  
 
-    
+      // 过滤出支持的媒体文件
 
-    for (const file of allFiles) {
+      const supportedFiles = allFiles.filter(file => this.isSupportedImageFile(file));
 
-      if (this.isSupportedImageFile(file)) {
+  
 
-        const existingData = this.imageDataManager.getImageDataByPath(file.path);
+      // 检查哪些文件还没有数据记录
 
-        if (!existingData) {
+      const filesToProcess = supportedFiles.filter(file => !this.imageDataManager.getImageDataByPath(file.path));
 
-          // 如果不存在，则创建默认数据
+  
+
+      let mediaCount = 0;
+
+  
+
+      // 批量处理文件以提高性能
+
+      const batchSize = 50; // 每批处理的文件数量
+
+      for (let i = 0; i < filesToProcess.length; i += batchSize) {
+
+        const batch = filesToProcess.slice(i, i + batchSize);
+
+        
+
+        // 并行处理当前批次的文件
+
+        const batchPromises = batch.map(async file => {
 
           const mediaData = await this.createDefaultImageData(file);
 
           this.imageDataManager.addImageData(mediaData);
 
-          mediaCount++;
+          return mediaData;
+
+        });
+
+  
+
+        await Promise.all(batchPromises);
+
+        mediaCount += batch.length;
+
+  
+
+        // 更新通知，显示进度
+
+        if (i + batchSize < filesToProcess.length) {
+
+          new Notice(`正在扫描... 已处理 ${i + batch.length}/${filesToProcess.length} 个文件`);
 
         }
 
       }
 
-    }
+  
 
-    
+      if (mediaCount > 0) {
 
-    if (mediaCount > 0) {
+        await this.saveDataToFile();
 
-      await this.saveDataToFile();
+      }
 
-    }
+  
 
-    new Notice(`扫描完成！新增了 ${mediaCount} 个媒体记录`);
+      new Notice(`扫描完成！新增了 ${mediaCount} 个媒体记录`);
 
   }
 

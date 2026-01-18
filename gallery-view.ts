@@ -1,9 +1,8 @@
 import { ItemView, WorkspaceLeaf, Notice, TFile, App } from 'obsidian';
 import { MediaData, ImageTaggingSettings, ImageDataManager, getMediaType } from './image-data-model';
-import { getImageResolutionWithCache, getImageTaggingPlugin, getSafeImagePath } from './utils';
-
-// 图库视图类型ID
-export const GALLERY_VIEW_TYPE = 'image-gallery-view';
+import { getImageResolutionWithCache, getImageTaggingPlugin, getSafeImagePath, preloadImageInfo } from './utils';
+import { Logger } from './logger';
+import { GALLERY_VIEW_TYPE, CSS_CLASSES } from './constants';
 
 // 图库视图类
 
@@ -473,7 +472,7 @@ export class GalleryView extends ItemView {
     }
   }
 
-private async createImageDataFromFile(file: any, id?: string): Promise<MediaData> {
+private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaData> {
 
     // 如果没有提供ID，则生成一个新的ID
 
@@ -541,11 +540,11 @@ private async createImageDataFromFile(file: any, id?: string): Promise<MediaData
 
       }
 
-    } catch (e) {
+        } catch (e) {
 
-      console.warn(`无法获取媒体信息: ${path}`, e);
+          Logger.warn(`无法获取媒体信息: ${path}`, e);
 
-    }
+        }
 
     
 
@@ -1498,7 +1497,7 @@ private async createImageDataFromFile(file: any, id?: string): Promise<MediaData
         await plugin.saveSettings();
       }
     } catch (error) {
-      console.error('保存分类失败:', error);
+      Logger.error('保存分类失败:', error);
     }
   }
 
@@ -1542,7 +1541,7 @@ private async createImageDataFromFile(file: any, id?: string): Promise<MediaData
 
     } catch (error) {
 
-      console.error('打开图片文件失败:', error);
+      Logger.error('打开图片文件失败:', error);
 
       new Notice(`无法打开文件: ${path}`);
 

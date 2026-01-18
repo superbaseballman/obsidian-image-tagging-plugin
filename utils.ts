@@ -1,5 +1,8 @@
-import { TFile, App } from 'obsidian';
-import { ImageDataManager, ImageTaggingSettings } from './image-data-model';
+import { TFile, App, Workspace } from 'obsidian';
+import { ImageDataManager, ImageTaggingSettings, MediaData } from './image-data-model';
+import { Logger } from './logger';
+import { ErrorHandler, ImageTaggingError } from './error-handler';
+import { ImageCacheManager } from './image-cache-manager';
 
 // 图片信息缓存
 interface CachedImageInfo {
@@ -55,7 +58,7 @@ export function getSafeImagePath(app: App, path: string | undefined | null): str
     return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWVlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlPC90ZXh0Pjwvc3ZnPg==';
   } catch (e) {
     // 如果 getResourcePath 失败，返回一个默认的占位符图像
-    console.warn(`无法获取图片路径: ${path}`, e);
+    Logger.warn(`无法获取图片路径: ${path}`, e);
     return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWVlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlPC90ZXh0Pjwvc3ZnPg==';
   }
 }
@@ -69,12 +72,9 @@ export interface ImageTaggingPlugin {
 }
 
 export function getImageTaggingPlugin(app: App): ImageTaggingPlugin | null {
-  const plugins = (app as any).plugins;
-  if (plugins && plugins.plugins) {
-    const plugin = plugins.plugins['image-tagging-obsidian'];
-    if (plugin) {
-      return plugin as ImageTaggingPlugin;
-    }
+  const plugins = (app as any).plugins as { [key: string]: ImageTaggingPlugin } | undefined;
+  if (plugins && plugins['image-tagging-obsidian']) {
+    return plugins['image-tagging-obsidian'];
   }
   return null;
 }
@@ -85,67 +85,8 @@ export function getImageTaggingPlugin(app: App): ImageTaggingPlugin | null {
  * @param app - Obsidian App实例
  * @returns 包含宽度、高度和分辨率字符串的对象，失败时返回null
  */
-export async function getImageResolutionWithCache(file: TFile, app: any): Promise<{width: number, height: number, resolution: string} | null> {
-  const filePath = file.path;
-  const cached = imageInfoCache.get(filePath);
-  
-  // 检查缓存是否有效
-  if (cached) {
-    const now = Date.now();
-    if (now - cached.lastFetchTime < CACHE_EXPIRY_TIME && file.stat.mtime <= cached.lastFetchTime) {
-      // 缓存有效，直接返回
-      return {
-        width: cached.width,
-        height: cached.height,
-        resolution: cached.resolution
-      };
-    }
-  }
-  
-  try {
-    // 获取图片资源路径
-    const fileUrl = app.vault.getResourcePath(file);
-    
-    // 创建一个Promise来等待图片加载完成
-    const loadImage = (src: string): Promise<{width: number, height: number} | null> => {
-      return new Promise((resolve) => {
-        const tempImg = new Image();
-        tempImg.onload = () => {
-          resolve({ 
-            width: tempImg.width, 
-            height: tempImg.height 
-          });
-        };
-        tempImg.onerror = () => resolve(null);
-        tempImg.src = src;
-      });
-    };
-    
-    const dimensions = await loadImage(fileUrl);
-    
-    if (dimensions) {
-      const resolution = `${dimensions.width}x${dimensions.height}`;
-      const cacheData: CachedImageInfo = {
-        width: dimensions.width,
-        height: dimensions.height,
-        resolution,
-        lastFetchTime: Date.now()
-      };
-      
-      imageInfoCache.set(filePath, cacheData);
-      
-      return {
-        width: dimensions.width,
-        height: dimensions.height,
-        resolution
-      };
-    }
-    
-    return null;
-  } catch (e) {
-    console.warn(`无法获取图片分辨率: ${filePath}`, e);
-    return null;
-  }
+export async function getImageResolutionWithCache(file: TFile, app: App): Promise<{width: number, height: number, resolution: string} | null> {
+  return ImageCacheManager.getImageResolutionWithCache(file, app);
 }
 
 /**
@@ -153,37 +94,24 @@ export async function getImageResolutionWithCache(file: TFile, app: any): Promis
  * @param filePath - 文件路径
  */
 export function clearImageCache(filePath: string) {
-  imageInfoCache.delete(filePath);
+  ImageCacheManager.clearImageCache(filePath);
 }
 
 /**
  * 清除所有缓存
  */
 export function clearAllImageCache() {
-  imageInfoCache.clear();
+  ImageCacheManager.clearAllImageCache();
 }
 
 /**
  * 预加载图片信息到缓存
  * @param files - 要预加载的文件数组
  * @param app - Obsidian App实例
+ * @param maxConcurrent = 5
  */
-export async function preloadImageInfo(files: TFile[], app: any, maxConcurrent = 5) {
-  const results: Array<{file: TFile, result: {width: number, height: number, resolution: string} | null}> = [];
-  
-  // 分批处理，避免同时加载过多图片导致性能问题
-  for (let i = 0; i < files.length; i += maxConcurrent) {
-    const batch = files.slice(i, i + maxConcurrent);
-    const batchPromises = batch.map(file => 
-      getImageResolutionWithCache(file, app)
-        .then(result => ({ file, result }))
-    );
-    
-    const batchResults = await Promise.all(batchPromises);
-    results.push(...batchResults);
-  }
-  
-  return results;
+export async function preloadImageInfo(files: TFile[], app: App, maxConcurrent = 5) {
+  return ImageCacheManager.preloadImageInfo(files, app, maxConcurrent);
 }
 
 /**
@@ -240,9 +168,9 @@ export function getImageFileFromPath(imagePath: string, app: App): TFile | null 
  * @returns Promise<boolean> - 删除是否成功
  */
 export async function deleteImageFile(
-  imageData: any, 
+  imageData: MediaData, 
   app: App, 
-  imageDataManager: any, 
+  imageDataManager: ImageDataManager, 
   currentFile?: TFile | null
 ): Promise<boolean> {
   try {
@@ -259,7 +187,7 @@ export async function deleteImageFile(
     }
 
     if (!fileToDelete) {
-      console.error('找不到要删除的文件');
+      Logger.error('找不到要删除的文件');
       return false;
     }
 
@@ -271,7 +199,7 @@ export async function deleteImageFile(
 
     return true;
   } catch (error) {
-    console.error('删除图片文件时发生错误:', error);
+    Logger.error('删除图片文件时发生错误:', error);
     return false;
   }
 }
