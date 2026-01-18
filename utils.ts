@@ -71,12 +71,30 @@ export interface ImageTaggingPlugin {
   saveSettings(): Promise<void>;
 }
 
+// 获取插件实例
 export function getImageTaggingPlugin(app: App): ImageTaggingPlugin | null {
-  const plugins = (app as any).plugins as { [key: string]: ImageTaggingPlugin } | undefined;
-  if (plugins && plugins['image-tagging-obsidian']) {
-    return plugins['image-tagging-obsidian'];
+  try {
+    // 首先尝试标准方式获取
+    const plugins = (app as any).plugins as { [key: string]: ImageTaggingPlugin } | undefined;
+    if (plugins && plugins['image-tagging-obsidian']) {
+      return plugins['image-tagging-obsidian'];
+    }
+    
+    // 如果标准方式失败，尝试其他方式
+    // 检查插件是否在其他可能的位置
+    if ((app as any).plugins?.plugins) {
+      const allPlugins = (app as any).plugins.plugins;
+      if (allPlugins && allPlugins['image-tagging-obsidian']) {
+        return allPlugins['image-tagging-obsidian'] as ImageTaggingPlugin;
+      }
+    }
+    
+    // 如果仍然找不到，返回 null
+    return null;
+  } catch (error) {
+    console.error('获取插件实例时出错:', error);
+    return null;
   }
-  return null;
 }
 
 /**

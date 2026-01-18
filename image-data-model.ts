@@ -2,6 +2,7 @@
 import { TFile, App } from 'obsidian';
 import { Logger } from './logger';
 import { DEFAULT_JSON_STORAGE_PATH, DEFAULT_SUPPORTED_FORMATS, DEFAULT_CATEGORIES } from './constants';
+import { DataMigration } from './data-migration';
 
 export interface MediaData {
   id: string;              // 唯一标识符
@@ -203,7 +204,9 @@ export class ImageDataManager {
   // 从 JSON 导入数据
   importFromJSON(jsonData: string): void {
     try {
-      const parsed = JSON.parse(jsonData);
+      // 使用数据迁移工具加载数据，自动处理旧版本格式
+      const parsed = DataMigration.loadDataWithMigration(jsonData);
+      
       if (Array.isArray(parsed)) {
         this.data.clear();
         this.pathToIdMap.clear(); // 清空路径映射
@@ -212,6 +215,8 @@ export class ImageDataManager {
           if (this.isValidImageData(item)) {
             this.data.set(item.id, item);
             this.pathToIdMap.set(item.path, item.id); // 添加路径映射
+          } else {
+            Logger.warn('跳过无效的数据项:', item);
           }
         }
       }
@@ -226,7 +231,7 @@ export class ImageDataManager {
     return JSON.stringify(Array.from(this.data.values()), null, 2);
   }
   
-  // 验证数据结构
+  // 验证数据结构 - 兼容新旧版本格式
   private isValidImageData(data: unknown): data is MediaData {
     if (typeof data !== 'object' || data === null) {
       return false;
@@ -234,16 +239,28 @@ export class ImageDataManager {
     
     const obj = data as Record<string, unknown>;
     
-    return (
+    // 检查基本必需字段
+    const hasBasicFields = 
       typeof obj.id === 'string' &&
       typeof obj.path === 'string' &&
       typeof obj.title === 'string' &&
       Array.isArray(obj.tags) &&
       obj.tags.every((tag: unknown) => typeof tag === 'string') &&
       typeof obj.date === 'string' &&
-      typeof obj.description === 'string' &&
-      (obj.type === 'image' || obj.type === 'video' || obj.type === 'audio')
-    );
+      typeof obj.description === 'string';
+    
+    if (!hasBasicFields) {
+      return false;
+    }
+    
+    // 检查新版本必需的 type 字段
+    if ('type' in obj) {
+      // 新版本格式 - 需要验证 type 字段的值
+      return (obj.type === 'image' || obj.type === 'video' || obj.type === 'audio');
+    }
+    
+    // 旧版本格式 - 没有 type 字段，但我们仍认为它是有效的（将在导入时添加）
+    return true;
   }
 
   // 清理失效的媒体数据

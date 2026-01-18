@@ -252,7 +252,7 @@ export class GalleryView extends ItemView {
     
     // 主要网格
     const gridContainer = mainContent.createEl('div', { cls: 'gallery-grid-container' });
-    this.imageGrid = gridContainer.createEl('div', { cls: 'gallery-grid masonry-grid' });
+    this.imageGrid = gridContainer.createEl('div', { cls: 'gallery-grid' });
     
     // 添加事件监听器
     this.addEventListeners();
@@ -317,7 +317,22 @@ export class GalleryView extends ItemView {
 
   private async refreshData() {
     // 从插件实例获取最新数据
-    const plugin = getImageTaggingPlugin(this.app);
+    let plugin = getImageTaggingPlugin(this.app);
+    
+    // 如果直接获取失败，尝试通过 workspace 获取
+    if (!plugin) {
+      // 遍历已加载的插件尝试找到当前插件
+      const allPlugins = (this.app as any).plugins.plugins;
+      if (allPlugins) {
+        for (const [id, pluginInstance] of Object.entries(allPlugins)) {
+          if (id === 'image-tagging-obsidian') {
+            plugin = pluginInstance;
+            break;
+          }
+        }
+      }
+    }
+    
     if (plugin && plugin.imageDataManager) {
       // 更新本地引用的数据管理器
       this.imageDataManager = plugin.imageDataManager;
@@ -325,128 +340,136 @@ export class GalleryView extends ItemView {
     
     // 重新加载并渲染数据
     this.renderImages();
+    
+    // 更新统计信息
+    this.updateStats();
+    
+    // 更新热门标签
+    this.updatePopularTags();
   }
 
   private async refreshGallery() {
-    // 从插件实例获取最新数据管理器
-    const plugin = getImageTaggingPlugin(this.app);
-    if (plugin && plugin.imageDataManager) {
-      this.imageDataManager = plugin.imageDataManager;
+    // 尝试多次获取插件实例，因为有时可能由于加载时机问题无法立即获取
+    let plugin = getImageTaggingPlugin(this.app);
+    
+    // 如果直接获取失败，尝试通过 workspace 获取
+    if (!plugin) {
+      // 遍历已加载的插件尝试找到当前插件
+      const allPlugins = (this.app as any).plugins.plugins;
+      if (allPlugins) {
+        for (const [id, pluginInstance] of Object.entries(allPlugins)) {
+          if (id === 'image-tagging-obsidian') {
+            plugin = pluginInstance;
+            break;
+          }
+        }
+      }
+    }
+    
+    if (!plugin) {
+      new Notice('无法获取插件实例，刷新失败');
+      console.error('Failed to get plugin instance in refreshGallery');
+      return;
     }
 
-    // 清理无效图片数据（删除不存在的或不在指定扫描路径内的图片记录）
+    // 确保使用插件实例的数据管理器
+    const imageDataManager = plugin.imageDataManager;
+    this.imageDataManager = imageDataManager;
 
-    const removedCount = this.imageDataManager.cleanupInvalidImages(this.app, this.settings.scanFolderPath, this.settings.scanMultipleFolderPaths);
+    // 清理无效媒体数据（删除不存在的或不在指定扫描路径内的媒体记录）
+    const removedCount = imageDataManager.cleanupInvalidImages(this.app, this.settings.scanFolderPath, this.settings.scanMultipleFolderPaths);
     
-    // 刷新图片数据（根据设置扫描图片）
+    // 刷新媒体数据（根据设置扫描媒体）
     await this.scanImagesBasedOnSettings();
 
-    // 保存数据到文件
-    await this.saveDataToFile();
+    // 确保在扫描后再次使用插件实例的数据管理器
+    this.imageDataManager = plugin.imageDataManager;
+
+    // 直接通过插件实例保存数据，确保保存的是最新数据
+    await plugin.saveDataToFile();
 
     // 重新渲染
     this.renderImages();
 
-    // 显示刷新结果通知
-    new Notice(`图库已刷新，清理了 ${removedCount} 个无效图片记录`);
+    // 获取最终的媒体计数用于通知
+    const finalCount = imageDataManager.getAllImageData().length;
+    new Notice(`图库已刷新，清理了 ${removedCount} 个无效媒体记录，当前共有 ${finalCount} 个媒体项目`);
   }
 
   private async scanImagesBasedOnSettings() {
 
     // 获取插件实例
-
-    const plugin = getImageTaggingPlugin(this.app);
-
-    if (!plugin) return;
-
-
-
-    new Notice('开始扫描图片文件...');
-
+    let plugin = getImageTaggingPlugin(this.app);
     
+    // 如果直接获取失败，尝试通过 workspace 获取
+    if (!plugin) {
+      // 遍历已加载的插件尝试找到当前插件
+      const allPlugins = (this.app as any).plugins.plugins;
+      if (allPlugins) {
+        for (const [id, pluginInstance] of Object.entries(allPlugins)) {
+          if (id === 'image-tagging-obsidian') {
+            plugin = pluginInstance;
+            break;
+          }
+        }
+      }
+    }
+    
+    if (!plugin || !plugin.imageDataManager) {
+      new Notice('无法获取插件数据管理器，扫描失败');
+      console.error('Failed to get plugin or imageDataManager in scanImagesBasedOnSettings');
+      return;
+    }
+
+    // 使用插件实例的数据管理器
+    const imageDataManager = plugin.imageDataManager;
+
+    new Notice('开始扫描媒体文件...');
 
     // 获取所有文件
-
     let allFiles = this.app.vault.getFiles();
 
-    
-
     // 处理文件夹路径：优先使用新的多文件夹设置，如果为空则使用旧的单文件夹设置
-
     let folderPathsToUse: string[] = [];
 
-    
-
     // 检查是否有新的多个文件夹路径设置
-
     if (this.settings.scanMultipleFolderPaths && this.settings.scanMultipleFolderPaths.length > 0) {
-
       folderPathsToUse = this.settings.scanMultipleFolderPaths.map(path => this.normalizePath(path));
-
     } else if (this.settings.scanFolderPath && this.settings.scanFolderPath.trim() !== '') {
-
       // 如果新的设置为空，但旧的设置有值，则使用旧设置
-
       folderPathsToUse = [this.normalizePath(this.settings.scanFolderPath)];
-
     }
-
-    
 
     // 如果设置了扫描文件夹路径，则只扫描这些文件夹中的文件
-
     if (folderPathsToUse.length > 0) {
-
       allFiles = allFiles.filter(file => this.isFileInFolder(file.path, folderPathsToUse));
-
     }
 
-    
+    let mediaCount = 0;
 
-    let imageCount = 0;
-
-    
-
-    // 获取当前支持的图片格式
-
-    const supportedFormats = this.settings.supportedFormats || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'];
-
-    
+    // 获取当前支持的媒体格式
+    const supportedFormats = this.settings.supportedFormats || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'mp4', 'avi', 'mov', 'mkv', 'webm', 'mp3', 'wav', 'flac', 'aac', 'ogg'];
 
     for (const file of allFiles) {
-
-      // 检查是否为支持的图片格式
-
+      // 检查是否为支持的媒体格式
       if (supportedFormats.includes(file.extension.toLowerCase())) {
-
-        const existingData = this.imageDataManager.getImageDataByPath(file.path);
-
+        const existingData = imageDataManager.getImageDataByPath(file.path);
         if (!existingData) {
-
           // 如果不存在，则创建默认数据
-
           const newData = await this.createImageDataFromFile(file);
-
-          this.imageDataManager.addImageData(newData);
-
-          imageCount++;
-
+          imageDataManager.addImageData(newData);
+          mediaCount++;
         }
-
       }
-
     }
 
-    
-
-    if (imageCount > 0 && plugin) {
-
+    if (mediaCount > 0) {
+      // 直接使用插件实例保存数据，确保数据一致性
       await plugin.saveDataToFile();
-
+      new Notice(`扫描完成！新增了 ${mediaCount} 个媒体记录`);
+    } else {
+      new Notice('扫描完成！没有发现新的媒体文件');
     }
-
-    new Notice(`扫描完成！新增了 ${imageCount} 个图片记录`);
-
   }
 
   private normalizePath(path: string): string {
@@ -466,7 +489,22 @@ export class GalleryView extends ItemView {
 
   private async saveDataToFile() {
     // 保存数据到文件
-    const plugin = getImageTaggingPlugin(this.app);
+    let plugin = getImageTaggingPlugin(this.app);
+    
+    // 如果直接获取失败，尝试通过 workspace 获取
+    if (!plugin) {
+      // 遍历已加载的插件尝试找到当前插件
+      const allPlugins = (this.app as any).plugins.plugins;
+      if (allPlugins) {
+        for (const [id, pluginInstance] of Object.entries(allPlugins)) {
+          if (id === 'image-tagging-obsidian') {
+            plugin = pluginInstance;
+            break;
+          }
+        }
+      }
+    }
+    
     if (plugin) {
       await plugin.saveDataToFile();
     }

@@ -1,5 +1,6 @@
 import { App, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, Notice, Menu } from 'obsidian';
 import { MediaData, ImageTaggingSettings, DEFAULT_SETTINGS, ImageDataManager, getMediaType } from './image-data-model';
+import { DataMigration } from './data-migration';
 import { ImageView } from './image-info-view';
 import { GalleryView } from './gallery-view';
 import { getImageResolutionWithCache, getImageFileFromPath } from './utils';
@@ -23,6 +24,9 @@ export default class ImageTaggingPlugin extends Plugin {
 
     // 从JSON文件加载数据
     await this.loadDataFromFile();
+    
+    // 自动检测并迁移旧版本数据（如果需要）
+    await this.autoMigrateLegacyData();
 
     // 注册图片右键菜单
     this.registerDomEvent(document, 'contextmenu', async (evt: MouseEvent) => {
@@ -119,6 +123,14 @@ export default class ImageTaggingPlugin extends Plugin {
       name: '从当前页面提取图片',
       callback: async () => {
         await this.extractAndProcessImagesFromPage();
+      }
+    });
+
+    this.addCommand({
+      id: 'migrate-legacy-data',
+      name: '迁移旧版本数据文件',
+      callback: async () => {
+        await this.migrateLegacyData();
       }
     });
 
@@ -698,6 +710,110 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
     }
 
+  }
+
+  /**
+   * 自动检测并迁移旧版本数据文件（如果当前数据为空且存在旧版本文件）
+   */
+  async autoMigrateLegacyData() {
+    try {
+      // 检查当前数据是否为空
+      const currentData = this.imageDataManager.getAllImageData();
+      
+      if (currentData.length === 0) {
+        // 当前数据为空，检查是否存在旧版本数据文件
+        const legacyFilePaths = [
+          '.obsidian/image-tag.json',  // 常见的旧版本路径
+          'image-tag.json',           // 可能的相对路径
+          '旧版本image-tag.json'      // 根据用户提供的文件名
+        ];
+        
+        for (const legacyPath of legacyFilePaths) {
+          if (await this.app.vault.adapter.exists(legacyPath)) {
+            Logger.info(`检测到旧版本数据文件: ${legacyPath}，开始自动迁移...`);
+            new Notice('检测到旧版本数据文件，正在自动迁移...');
+            
+            // 使用数据迁移工具迁移数据
+            const success = await DataMigration.migrateLegacyFile(this.app, legacyPath);
+            
+            if (success) {
+              // 重新加载数据以确保更新
+              await this.loadDataFromFile();
+              new Notice('旧版本数据已自动迁移完成！');
+              Logger.info('自动数据迁移成功');
+              return; // 迁移成功后退出
+            }
+          }
+        }
+      }
+    } catch (error) {
+      Logger.warn('自动检测旧版本数据时发生错误:', error);
+      // 静默处理错误，不影响插件正常加载
+    }
+  }
+
+  /**
+   * 迁移旧版本数据文件
+   */
+  async migrateLegacyData() {
+    try {
+      new Notice('开始迁移旧版本数据...');
+      
+      // 定义可能的旧版本数据文件路径
+      const legacyFilePaths = [
+        '.obsidian/image-tag.json',  // 常见的旧版本路径
+        'image-tag.json',           // 可能的相对路径
+        this.settings.jsonStoragePath.replace('.json', '_old.json'), // 用户可能重命名的旧文件
+        '旧版本image-tag.json'      // 根据用户提供的文件名
+      ];
+      
+      let migrationSuccess = false;
+      
+      // 尝试从每个可能的路径迁移
+      for (const legacyPath of legacyFilePaths) {
+        if (await this.app.vault.adapter.exists(legacyPath)) {
+          Logger.info(`发现旧版本数据文件: ${legacyPath}`);
+          
+          // 使用数据迁移工具迁移数据
+          const success = await DataMigration.migrateLegacyFile(this.app, legacyPath);
+          
+          if (success) {
+            // 重新加载数据以确保更新
+            await this.loadDataFromFile();
+            new Notice(`成功从 ${legacyPath} 迁移数据！`);
+            migrationSuccess = true;
+            break;
+          }
+        }
+      }
+      
+      if (!migrationSuccess) {
+        // 如果没有找到已知路径的旧文件，提示用户手动指定路径
+        new Notice('未找到已知路径的旧版本数据文件，请确保旧文件存在后再试。');
+        
+        // 作为备选方案，尝试读取旧版本文件
+        const possibleLegacyPath = '旧版本image-tag.json';
+        if (await this.app.vault.adapter.exists(possibleLegacyPath)) {
+          const success = await DataMigration.migrateLegacyFile(this.app, possibleLegacyPath);
+          if (success) {
+            await this.loadDataFromFile();
+            new Notice(`成功从 ${possibleLegacyPath} 迁移数据！`);
+            migrationSuccess = true;
+          }
+        }
+      }
+      
+      if (migrationSuccess) {
+        // 保存迁移后的数据到当前配置的路径
+        await this.saveDataToFile();
+        new Notice('数据迁移完成！旧版本数据已成功转换为新格式。');
+      } else {
+        new Notice('未找到可迁移的旧版本数据文件。');
+      }
+    } catch (error) {
+      Logger.error('迁移旧版本数据失败:', error);
+      new Notice('迁移旧版本数据时发生错误，请查看控制台了解详细信息。');
+    }
   }
 
   async saveDataToFile() {
