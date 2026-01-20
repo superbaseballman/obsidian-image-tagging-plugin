@@ -171,6 +171,36 @@ export class ImageView extends ItemView {
     // 媒体基本信息
     const infoContainer = this.imageInfoContainer.createEl('div', { cls: 'image-details' });
     
+    // 文件信息部分
+    const fileInfoSection = infoContainer.createEl('div', { cls: 'info-section file-info-section' });
+    fileInfoSection.createEl('label', { text: '文件信息' });
+    
+    const fileInfoContainer = fileInfoSection.createEl('div', { cls: 'file-info' });
+    fileInfoContainer.createEl('p', {}, (el) => {
+      el.innerHTML = `<strong>路径:</strong> <a href="#" class="file-path-link" data-path="${imageData.path}">${imageData.path}</a>`;
+      
+      // 添加点击事件，以便点击链接时可以打开文件
+      const linkEl = el.querySelector('.file-path-link') as HTMLElement;
+      if (linkEl) {
+        linkEl.addEventListener('click', (e) => {
+          e.preventDefault();
+          this.openImageFile(imageData.path);
+        });
+      }
+    });
+    fileInfoContainer.createEl('p', { text: `${imageData.size ? `<strong>大小:</strong> ${imageData.size}` : ''}` }, (el) => {
+      if(imageData.size) el.innerHTML = `<strong>大小:</strong> ${imageData.size}`;
+    });
+    fileInfoContainer.createEl('p', { text: `${imageData.format ? `<strong>格式:</strong> ${imageData.format}` : ''}` }, (el) => {
+      if(imageData.format) el.innerHTML = `<strong>格式:</strong> ${imageData.format}`;
+    });
+    fileInfoContainer.createEl('p', { text: `${imageData.resolution ? `<strong>分辨率:</strong> ${imageData.resolution}` : ''}` }, (el) => {
+      if(imageData.resolution) el.innerHTML = `<strong>分辨率:</strong> ${imageData.resolution}`;
+    });
+    fileInfoContainer.createEl('p', {}, (el) => {
+      el.innerHTML = `<strong>修改时间:</strong> ${new Date(imageData.lastModified).toLocaleString()}`;
+    });
+
     // 标题编辑
     const titleContainer = infoContainer.createEl('div', { cls: 'info-item' });
     titleContainer.createEl('label', { text: '标题' });

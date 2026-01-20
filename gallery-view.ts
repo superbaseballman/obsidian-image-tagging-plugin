@@ -326,7 +326,7 @@ export class GalleryView extends ItemView {
       if (allPlugins) {
         for (const [id, pluginInstance] of Object.entries(allPlugins)) {
           if (id === 'image-tagging-obsidian') {
-            plugin = pluginInstance;
+            plugin = pluginInstance as any;
             break;
           }
         }
@@ -359,7 +359,7 @@ export class GalleryView extends ItemView {
       if (allPlugins) {
         for (const [id, pluginInstance] of Object.entries(allPlugins)) {
           if (id === 'image-tagging-obsidian') {
-            plugin = pluginInstance;
+            plugin = pluginInstance as any;
             break;
           }
         }
@@ -408,7 +408,7 @@ export class GalleryView extends ItemView {
       if (allPlugins) {
         for (const [id, pluginInstance] of Object.entries(allPlugins)) {
           if (id === 'image-tagging-obsidian') {
-            plugin = pluginInstance;
+            plugin = pluginInstance as any;
             break;
           }
         }
@@ -498,7 +498,7 @@ export class GalleryView extends ItemView {
       if (allPlugins) {
         for (const [id, pluginInstance] of Object.entries(allPlugins)) {
           if (id === 'image-tagging-obsidian') {
-            plugin = pluginInstance;
+            plugin = pluginInstance as any;
             break;
           }
         }

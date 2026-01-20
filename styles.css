@@ -28,6 +28,9 @@
 .image-preview-container {
   text-align: center;
   margin-bottom: 15px;
+  display: inline-block;
+  width: fit-content;
+  height: fit-content;
 }
 
 .image-preview {
@@ -35,7 +38,6 @@
   max-height: 200px;
   object-fit: contain;
   border-radius: 4px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .image-details {
@@ -149,6 +151,35 @@
 
 .save-info-btn:hover {
   background-color: var(--interactive-accent-hover);
+}
+
+/* 文件信息部分 */
+.info-section {
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+.info-section label {
+  display: block;
+  font-weight: var(--font-semibold);
+  margin-bottom: 8px;
+  color: var(--text-normal);
+}
+
+.file-info p {
+  margin: 5px 0;
+  font-size: 0.9em;
+  color: var(--text-muted);
+}
+
+.file-path-link {
+  color: var(--text-accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.file-path-link:hover {
+  color: var(--text-accent-hover);
 }
 
 /* 图库视图样式 */
@@ -312,7 +343,9 @@
 .image-preview-container {
   position: relative;
   width: 100%;
-  padding-top: 100%; /* 1:1 Aspect Ratio */
+  height: 0;
+  padding-top: 100%; /* 1:1 Aspect Ratio by default */
+  margin: 0px;
 }
 
 .image-preview {
@@ -321,7 +354,7 @@
   left: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain; /* Changed from 'cover' to 'contain' to show full image */
 }
 
 .image-overlay {
