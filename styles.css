@@ -26,16 +26,30 @@
 }
 
 .image-preview-container {
-  text-align: center;
-  margin-bottom: 15px;
-  display: inline-block;
-  width: fit-content;
-  height: fit-content;
+  position: relative;
+  width: 100%;
+  /* 移除固定的1:1比例 */
+  height: auto;
+  padding-top: 0;
+  margin: 0px;
+}
+
+/* 添加一个占位符元素以根据图片原始比例调整容器高度 */
+.image-preview-container::before {
+  content: '';
+  display: block;
+  width: 100%;
+  /* 这个值将通过JavaScript动态设置，初始设为默认比例 */
+  padding-top: var(--aspect-ratio, 100%);
+  height: 0;
 }
 
 .image-preview {
-  max-width: 100%;
-  max-height: 200px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
   border-radius: 4px;
 }
@@ -343,9 +357,20 @@
 .image-preview-container {
   position: relative;
   width: 100%;
-  height: 0;
-  padding-top: 100%; /* 1:1 Aspect Ratio by default */
+  /* 移除固定的1:1比例 */
+  height: auto;
+  padding-top: 0;
   margin: 0px;
+}
+
+/* 添加一个占位符元素以根据图片原始比例调整容器高度 */
+.image-preview-container::before {
+  content: '';
+  display: block;
+  width: 100%;
+  /* 这个值将通过JavaScript动态设置，初始设为默认比例 */
+  padding-top: var(--aspect-ratio, 100%);
+  height: 0;
 }
 
 .image-preview {
@@ -354,7 +379,7 @@
   left: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain; /* Changed from 'cover' to 'contain' to show full image */
+  object-fit: contain;
 }
 
 .image-overlay {

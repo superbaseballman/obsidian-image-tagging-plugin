@@ -792,7 +792,7 @@ private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaDa
 
         <div class="image-card-inner">
 
-          <div class="image-preview-container">
+          <div class="image-preview-container" data-media-path="${mediaPath}">
 
             ${previewElement}
 
@@ -1585,5 +1585,65 @@ private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaDa
 
     }
 
+  }
+  
+  /**
+   * 更新所有图片预览容器的宽高比
+   */
+  private async updateImageAspectRatios() {
+    const containers = this.containerEl.querySelectorAll('.image-preview-container[data-media-path]');
+    
+    // 并发处理所有容器，但限制并发数量
+    const batchSize = 10;
+    for (let i = 0; i < containers.length; i += batchSize) {
+      const batch = Array.from(containers).slice(i, i + batchSize);
+      await Promise.all(batch.map(container => this.updateContainerAspectRatio(container as HTMLElement)));
+    }
+  }
+  
+  /**
+   * 更新单个图片预览容器的宽高比
+   */
+  private async updateContainerAspectRatio(container: HTMLElement) {
+    try {
+      const mediaPath = container.dataset.mediaPath;
+      if (!mediaPath || !mediaPath.startsWith('app://')) return;
+      
+      // 从app://路径中提取实际文件路径
+      const actualPath = mediaPath.replace(/.*app:\/\/\+\/\w+\//, '').split('?')[0];
+      const file = this.app.vault.getAbstractFileByPath(actualPath);
+      
+      if (file && file instanceof TFile && file.extension.match(/^(jpg|jpeg|png|gif|bmp|webp|svg)$/)) {
+        // 创建临时图片对象以获取尺寸
+        const img = new Image();
+        img.src = mediaPath;
+        
+        // 设置一个合理的超时时间
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Timeout getting image dimensions')), 5000);
+        });
+        
+        const dimensionPromise = new Promise<{width: number, height: number}>((resolve, reject) => {
+          img.onload = () => {
+            resolve({ width: img.naturalWidth, height: img.naturalHeight });
+          };
+          img.onerror = () => {
+            reject(new Error('Failed to load image for dimension calculation'));
+          };
+        });
+        
+        // 获取图片尺寸，带超时保护
+        const { width, height } = await Promise.race([dimensionPromise, timeoutPromise]) as {width: number, height: number};
+        
+        if (width > 0 && height > 0) {
+          // 计算宽高比并转换为百分比
+          const aspectRatio = (height / width) * 100;
+          container.style.setProperty('--aspect-ratio', `${aspectRatio}%`);
+        }
+      }
+    } catch (error) {
+      // 出错时忽略，保持默认宽高比
+      Logger.warn(`无法获取图片尺寸:`, error);
+    }
   }
 }
