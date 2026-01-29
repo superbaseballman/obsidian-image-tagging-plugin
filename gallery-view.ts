@@ -26,6 +26,10 @@ export class GalleryView extends ItemView {
 
   selectedTags: string[] = []; // 存储当前选择的标签
 
+  selectedImages: string[] = []; // 存储当前选中的图片ID
+  
+  lastSelectedImageId: string | null = null; // 存储最后选中的图片ID，用于Shift连续选择
+
 
 
   constructor(leaf: WorkspaceLeaf, settings: ImageTaggingSettings, imageDataManager: ImageDataManager) {
@@ -788,6 +792,12 @@ private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaDa
         previewElement = `<img src="${mediaPath}" alt="${image.title}" class="image-preview">`; // 默认作为图片处理
       }
       
+      // 检查图片是否被选中
+      const isSelected = this.selectedImages.includes(image.id);
+      if (isSelected) {
+        imageCard.addClass('selected');
+      }
+      
       imageCard.innerHTML = `
 
         <div class="image-card-inner">
@@ -795,6 +805,13 @@ private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaDa
           <div class="image-preview-container" data-media-path="${mediaPath}">
 
             ${previewElement}
+            
+            <!-- 选中状态指示器 -->
+            <div class="image-selection-indicator ${isSelected ? 'selected' : ''}">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </div>
 
             <div class="image-overlay">
 
@@ -824,30 +841,134 @@ private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaDa
 
       `;
       
-      // 添加点击事件打开详情
-
+      // 添加点击事件处理多选和详情打开
       imageCard.addEventListener('click', (e) => {
-
         const target = e.target as HTMLElement;
-
-        // 如果点击的是路径链接，则打开文件而不是详情
-
-        if (target.classList.contains('file-path-link') || target.classList.contains('image-path-link')) {
-
+        
+        // 检查是否点击了选中指示器
+        const isSelectionIndicator = target.classList.contains('image-selection-indicator') || 
+                                    target.closest('.image-selection-indicator');
+        
+        // 如果按住Shift键点击，进行连续选择操作
+        if (e.shiftKey && this.lastSelectedImageId) {
           e.preventDefault();
-
-          const path = target.getAttribute('data-path') || image.path;
-
-          this.openImageFile(path);
-
-        } else if (!target.classList.contains('image-tag')) {
-
-          // 如果点击的是标签，则不打开详情
-
-          this.openImageDetail(image);
-
+          e.stopPropagation(); // 阻止事件冒泡，防止打开详情
+          
+          // 获取所有图片卡片
+          const allImageCards = Array.from(this.imageGrid.querySelectorAll('.image-card'));
+          const currentIndex = allImageCards.indexOf(imageCard);
+          const lastIndex = allImageCards.findIndex(card => 
+            card.getAttribute('data-image-id') === this.lastSelectedImageId
+          );
+          
+          if (lastIndex !== -1) {
+            // 确定选择范围
+            const startIndex = Math.min(currentIndex, lastIndex);
+            const endIndex = Math.max(currentIndex, lastIndex);
+            
+            // 获取范围内的所有图片ID
+            const rangeImageIds: string[] = [];
+            for (let i = startIndex; i <= endIndex; i++) {
+              const card = allImageCards[i] as HTMLElement;
+              const id = card.dataset.imageId;
+              if (id) rangeImageIds.push(id);
+            }
+            
+            // 如果当前图片未选中，添加到选中列表
+            if (!this.selectedImages.includes(image.id)) {
+              // 添加范围内的所有图片到选中列表
+              rangeImageIds.forEach(id => {
+                if (!this.selectedImages.includes(id)) {
+                  this.selectedImages.push(id);
+                  const card = this.imageGrid.querySelector(`[data-image-id="${id}"]`) as HTMLElement;
+                  if (card) {
+                    card.addClass('selected');
+                    // 更新选中指示器
+                    const indicator = card.querySelector('.image-selection-indicator');
+                    if (indicator) indicator.addClass('selected');
+                  }
+                }
+              });
+            } else {
+              // 如果当前图片已选中，从选中列表中移除范围内的所有图片
+              rangeImageIds.forEach(id => {
+                const index = this.selectedImages.indexOf(id);
+                if (index !== -1) {
+                  this.selectedImages.splice(index, 1);
+                  const card = this.imageGrid.querySelector(`[data-image-id="${id}"]`) as HTMLElement;
+                  if (card) {
+                    card.removeClass('selected');
+                    // 更新选中指示器
+                    const indicator = card.querySelector('.image-selection-indicator');
+                    if (indicator) indicator.removeClass('selected');
+                  }
+                }
+              });
+            }
+            
+            // 更新最后选中的图片
+            this.lastSelectedImageId = image.id;
+          }
         }
-
+        // 如果按住Ctrl或Cmd键点击，进行多选操作
+        else if (e.ctrlKey || e.metaKey || isSelectionIndicator) {
+          e.preventDefault();
+          e.stopPropagation(); // 阻止事件冒泡，防止打开详情
+          // 切换选中状态
+          const index = this.selectedImages.indexOf(image.id);
+          if (index > -1) {
+            // 如果已选中，则取消选中
+            this.selectedImages.splice(index, 1);
+            imageCard.removeClass('selected');
+            // 更新选中指示器
+            const indicator = imageCard.querySelector('.image-selection-indicator');
+            if (indicator) indicator.removeClass('selected');
+          } else {
+            // 如果未选中，则添加到选中列表
+            this.selectedImages.push(image.id);
+            imageCard.addClass('selected');
+            // 更新选中指示器
+            const indicator = imageCard.querySelector('.image-selection-indicator');
+            if (indicator) indicator.addClass('selected');
+          }
+          
+          // 更新最后选中的图片
+          this.lastSelectedImageId = image.id;
+          
+          // 更新批量操作工具栏
+          this.updateBatchOperationToolbar();
+          return;
+        }
+        
+        // 如果点击的是路径链接，则打开文件而不是详情
+        if (target.classList.contains('file-path-link') || target.classList.contains('image-path-link')) {
+          e.preventDefault();
+          const path = target.getAttribute('data-path') || image.path;
+          this.openImageFile(path);
+        } else if (target.classList.contains('image-tag')) {
+          // 如果点击的是标签，则不打开详情
+          e.stopPropagation();
+        } else {
+          // 如果没有按Ctrl/Shift键且没有点击标签，则打开详情
+          // 但如果当前有选中的图片，先清除选中状态
+          if (this.selectedImages.length > 0) {
+            this.clearImageSelection();
+          }
+          this.openImageDetail(image);
+        }
+      });
+      
+      // 右键点击用于选择图片（在上下文菜单显示之前）
+      imageCard.addEventListener('contextmenu', (e) => {
+        // 如果图片未被选中，将其添加到选中列表
+        if (!this.selectedImages.includes(image.id)) {
+          // 清除之前的选中状态
+          this.clearImageSelection();
+          // 选中当前图片
+          this.selectedImages.push(image.id);
+          imageCard.addClass('selected');
+          this.updateBatchOperationToolbar();
+        }
       });
     });
     
@@ -856,6 +977,9 @@ private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaDa
     
     // 更新热门标签
     this.updatePopularTags();
+    
+    // 更新批量操作工具栏
+    this.updateBatchOperationToolbar();
   }
   
   
@@ -1598,6 +1722,223 @@ private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaDa
     for (let i = 0; i < containers.length; i += batchSize) {
       const batch = Array.from(containers).slice(i, i + batchSize);
       await Promise.all(batch.map(container => this.updateContainerAspectRatio(container as HTMLElement)));
+    }
+  }
+  
+  // 清除图片选中状态
+  private clearImageSelection() {
+    this.selectedImages = [];
+    this.lastSelectedImageId = null; // 同时清除最后选中的图片ID
+    // 移除所有选中状态的图片卡片和选中指示器
+    const selectedCards = this.containerEl.querySelectorAll('.image-card.selected');
+    selectedCards.forEach(card => {
+      card.removeClass('selected');
+      // 同时移除选中指示器的选中状态
+      const indicator = card.querySelector('.image-selection-indicator');
+      if (indicator) indicator.removeClass('selected');
+    });
+    
+    // 更新批量操作工具栏
+    this.updateBatchOperationToolbar();
+  }
+  
+  // 更新批量操作工具栏
+  private updateBatchOperationToolbar() {
+    // 查找或创建批量操作工具栏
+    let batchToolbar = this.containerEl.querySelector('.batch-operation-toolbar');
+    
+    if (this.selectedImages.length > 0) {
+      // 如果有选中的图片，显示批量操作工具栏
+      if (!batchToolbar) {
+        // 创建批量操作工具栏
+        batchToolbar = this.containerEl.createEl('div', { cls: 'batch-operation-toolbar' });
+        
+        // 添加工具栏内容
+        batchToolbar.innerHTML = `
+          <div class="batch-toolbar-content">
+            <span class="batch-selection-info">已选中 ${this.selectedImages.length} 个项目</span>
+            <div class="batch-operation-controls">
+              <button class="batch-add-tag-btn">添加标签</button>
+              <button class="batch-remove-tag-btn">删除标签</button>
+              <button class="batch-clear-selection">清除选择</button>
+            </div>
+          </div>
+        `;
+        
+        // 添加事件监听器
+        const addTagBtn = batchToolbar.querySelector('.batch-add-tag-btn');
+        const removeTagBtn = batchToolbar.querySelector('.batch-remove-tag-btn');
+        const clearSelectionBtn = batchToolbar.querySelector('.batch-clear-selection');
+        
+        if (addTagBtn) {
+          addTagBtn.addEventListener('click', () => this.showBatchTagModal('add'));
+        }
+        
+        if (removeTagBtn) {
+          removeTagBtn.addEventListener('click', () => this.showBatchTagModal('remove'));
+        }
+        
+        if (clearSelectionBtn) {
+          clearSelectionBtn.addEventListener('click', () => {
+            this.clearImageSelection();
+          });
+        }
+      } else {
+        // 如果工具栏已存在，更新选中信息
+        const selectionInfo = batchToolbar.querySelector('.batch-selection-info');
+        if (selectionInfo) {
+          selectionInfo.textContent = `已选中 ${this.selectedImages.length} 个项目`;
+        }
+      }
+      
+      // 显示工具栏
+      batchToolbar.removeClass('hidden');
+    } else {
+      // 如果没有选中的图片，隐藏批量操作工具栏
+      if (batchToolbar) {
+        batchToolbar.addClass('hidden');
+      }
+    }
+  }
+  
+  // 显示批量标签操作模态框
+  private showBatchTagModal(operation: 'add' | 'remove') {
+    // 创建模态框
+    const modal = this.containerEl.createEl('div', { cls: 'batch-tag-modal' });
+    
+    const operationText = operation === 'add' ? '添加' : '删除';
+    modal.innerHTML = `
+      <div class="modal-backdrop"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>批量${operationText}标签</h3>
+          <span class="modal-close-btn">&times;</span>
+        </div>
+        <div class="modal-body">
+          <div class="batch-tag-operation">
+            <p>选中的项目: ${this.selectedImages.length} 个</p>
+            <div class="tag-input-section">
+              <label for="batch-tag-input">${operationText}标签:</label>
+              <input type="text" id="batch-tag-input" class="batch-tag-input" placeholder="输入标签，多个标签用逗号分隔">
+              <div class="recent-tags-section">
+                <label>热门标签:</label>
+                <div class="recent-tags-list" id="batch-recent-tags-list"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="modal-cancel-btn">取消</button>
+          <button class="modal-confirm-btn">${operationText}</button>
+        </div>
+      </div>
+    `;
+    
+    // 添加事件监听器
+    const closeBtn = modal.querySelector('.modal-close-btn');
+    const cancelBtn = modal.querySelector('.modal-cancel-btn');
+    const confirmBtn = modal.querySelector('.modal-confirm-btn');
+    const tagInput = modal.querySelector('.batch-tag-input') as HTMLInputElement;
+    const recentTagsContainer = modal.querySelector('#batch-recent-tags-list') as HTMLElement;
+    
+    // 填充热门标签
+    if (recentTagsContainer) {
+      const popularTags = this.imageDataManager.getPopularTags(10);
+      if (popularTags.length > 0) {
+        popularTags.forEach(tagInfo => {
+          const tagEl = recentTagsContainer.createEl('span', { 
+            cls: 'popular-tag-item',
+            text: tagInfo.tag
+          });
+          
+          tagEl.addEventListener('click', () => {
+            if (tagInput.value) {
+              tagInput.value += `, ${tagInfo.tag}`;
+            } else {
+              tagInput.value = tagInfo.tag;
+            }
+          });
+        });
+      } else {
+        recentTagsContainer.createEl('span', { 
+          cls: 'no-popular-tags',
+          text: '暂无热门标签'
+        });
+      }
+    }
+    
+    const closeModal = () => {
+      modal.remove();
+    };
+    
+    closeBtn?.addEventListener('click', closeModal);
+    cancelBtn?.addEventListener('click', closeModal);
+    modal.querySelector('.modal-backdrop')?.addEventListener('click', closeModal);
+    
+    // 确认按钮事件
+    if (confirmBtn) {
+      confirmBtn.addEventListener('click', async () => {
+        if (tagInput && tagInput.value.trim()) {
+          const tags = tagInput.value.split(',')
+            .map(tag => tag.trim())
+            .filter(tag => tag.length > 0);
+          
+          if (tags.length > 0) {
+            if (operation === 'add') {
+              await this.batchAddTags(tags);
+            } else {
+              await this.batchRemoveTags(tags);
+            }
+            closeModal();
+            new Notice(`已${operationText}标签到 ${this.selectedImages.length} 个图片`);
+            this.renderImages(); // 重新渲染以显示更改
+          }
+        } else {
+          new Notice('请输入标签');
+        }
+      });
+    }
+  }
+  
+  // 批量添加标签
+  private async batchAddTags(tags: string[]) {
+    for (const imageId of this.selectedImages) {
+      const imageData = this.imageDataManager.getImageData(imageId);
+      if (imageData) {
+        // 添加新标签，避免重复
+        for (const tag of tags) {
+          if (!imageData.tags.includes(tag)) {
+            imageData.tags.push(tag);
+          }
+        }
+        // 更新数据
+        this.imageDataManager.addImageData(imageData);
+      }
+    }
+    
+    // 保存数据
+    const plugin = getImageTaggingPlugin(this.app);
+    if (plugin) {
+      await plugin.saveDataToFile();
+    }
+  }
+  
+  // 批量删除标签
+  private async batchRemoveTags(tags: string[]) {
+    for (const imageId of this.selectedImages) {
+      const imageData = this.imageDataManager.getImageData(imageId);
+      if (imageData) {
+        // 删除指定标签
+        imageData.tags = imageData.tags.filter(tag => !tags.includes(tag));
+        // 更新数据
+        this.imageDataManager.addImageData(imageData);
+      }
+    }
+    
+    // 保存数据
+    const plugin = getImageTaggingPlugin(this.app);
+    if (plugin) {
+      await plugin.saveDataToFile();
     }
   }
   

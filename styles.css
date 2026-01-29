@@ -653,7 +653,7 @@
 
 .image-detail-modal .modal-content {
   position: relative;
-  background-color: var(--background-primary);
+  background-color: rgb(230, 235, 247);
   border-radius: 8px;
   max-width: 90vw;
   max-height: 90vh;
@@ -1041,6 +1041,249 @@
   margin-top: 2px;
 } */
 
+/* 隐藏类 */
+.hidden {
+  display: none !important;
+}
+
+/* 选中状态指示器 */
+.image-selection-indicator {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--text-normal);
+  background-color: transparent;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.image-card:hover .image-selection-indicator {
+  opacity: 1;
+}
+
+.image-selection-indicator.selected {
+  background-color: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+}
+
+.image-selection-indicator.selected svg {
+  display: block;
+}
+
+.image-selection-indicator svg {
+  width: 14px;
+  height: 14px;
+  color: white;
+  display: none;
+}
+
+/* 选中的图片卡片样式 */
+.image-card.selected {
+  border: 2px solid var(--interactive-accent);
+  box-shadow: 0 0 0 2px var(--interactive-accent) !important;
+}
+
+/* 批量操作工具栏 */
+.batch-operation-toolbar {
+  position: sticky;
+  top: 0;
+  background-color: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 10px;
+  margin: 10px 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.batch-toolbar-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.batch-selection-info {
+  font-weight: var(--font-semibold);
+  color: var(--text-normal);
+}
+
+.batch-operation-controls {
+  display: flex;
+  gap: 10px;
+}
+
+.batch-operation-controls button {
+  padding: 6px 12px;
+  border: 1px solid var(--background-modifier-border);
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.batch-operation-controls button:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+/* 批量标签操作模态框 */
+.batch-tag-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--background-modifier-cover);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1001; /* 高于其他模态框 */
+}
+
+.batch-tag-modal .modal-content {
+  position: relative;
+  background-color: var(--background-primary);
+  border-radius: 8px;
+  max-width: 600px;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  width: 90%;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.batch-tag-modal .modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.batch-tag-modal .modal-header h3 {
+  margin: 0;
+  word-break: break-word;
+}
+
+.batch-tag-modal .modal-close-btn {
+  font-size: 1.5em;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.batch-tag-modal .modal-close-btn:hover {
+  color: var(--text-normal);
+}
+
+.batch-tag-modal .modal-body {
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.batch-tag-operation p {
+  margin: 0 0 15px 0;
+  color: var(--text-muted);
+}
+
+.tag-input-section label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: var(--font-semibold);
+  color: var(--text-normal);
+}
+
+.batch-tag-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background-color: var(--background-primary-alt);
+  color: var(--text-normal);
+  margin-bottom: 15px;
+}
+
+.batch-tag-modal .recent-tags-section {
+  margin-top: 10px;
+}
+
+.batch-tag-modal .recent-tags-section label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: var(--font-semibold);
+  color: var(--text-normal);
+}
+
+.batch-tag-modal .recent-tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.batch-tag-modal .popular-tag-item {
+  padding: 4px 10px;
+  background-color: var(--background-secondary);
+  border-radius: 20px;
+  font-size: 0.8em;
+  cursor: pointer;
+  margin: 2px;
+  display: inline-block;
+}
+
+.batch-tag-modal .popular-tag-item:hover {
+  background-color: var(--interactive-accent);
+  color: white;
+}
+
+.batch-tag-modal .no-popular-tags {
+  font-size: 0.9em;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.batch-tag-modal .modal-footer {
+  padding: 15px 20px;
+  border-top: 1px solid var(--background-modifier-border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.batch-tag-modal .modal-cancel-btn,
+.batch-tag-modal .modal-confirm-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.batch-tag-modal .modal-confirm-btn {
+  background-color: var(--interactive-accent);
+  color: white;
+}
+
+.batch-tag-modal .modal-confirm-btn:hover {
+  background-color: var(--interactive-accent-hover);
+}
+
+.batch-tag-modal .modal-cancel-btn {
+  background-color: var(--background-secondary-alt);
+  color: var(--text-normal);
+}
+
+.batch-tag-modal .modal-cancel-btn:hover {
+  background-color: var(--background-modifier-hover);
+}
+
 /* 适配深色主题 */
 .theme-dark .tag-color-yellow {
   color: var(--text-normal);
@@ -1076,5 +1319,16 @@
   .modal-image-info {
     max-width: 100%;
     padding: 15px;
+  }
+  
+  .batch-toolbar-content {
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  
+  .batch-operation-controls {
+    width: 100%;
+    justify-content: center;
   }
 }
