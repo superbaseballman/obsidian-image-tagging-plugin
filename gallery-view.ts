@@ -1744,60 +1744,72 @@ private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaDa
   
   // 更新批量操作工具栏
   private updateBatchOperationToolbar() {
-    // 查找或创建批量操作工具栏
-    let batchToolbar = this.containerEl.querySelector('.batch-operation-toolbar');
+    // 检查容器元素是否已经创建和加载
+    if (!this.containerEl) {
+      return; // 如果容器元素还没准备好，则直接返回
+    }
     
-    if (this.selectedImages.length > 0) {
-      // 如果有选中的图片，显示批量操作工具栏
-      if (!batchToolbar) {
-        // 创建批量操作工具栏
-        batchToolbar = this.containerEl.createEl('div', { cls: 'batch-operation-toolbar' });
-        
-        // 添加工具栏内容
-        batchToolbar.innerHTML = `
-          <div class="batch-toolbar-content">
-            <span class="batch-selection-info">已选中 ${this.selectedImages.length} 个项目</span>
-            <div class="batch-operation-controls">
-              <button class="batch-add-tag-btn">添加标签</button>
-              <button class="batch-remove-tag-btn">删除标签</button>
-              <button class="batch-clear-selection">清除选择</button>
-            </div>
-          </div>
-        `;
-        
-        // 添加事件监听器
-        const addTagBtn = batchToolbar.querySelector('.batch-add-tag-btn');
-        const removeTagBtn = batchToolbar.querySelector('.batch-remove-tag-btn');
-        const clearSelectionBtn = batchToolbar.querySelector('.batch-clear-selection');
-        
-        if (addTagBtn) {
-          addTagBtn.addEventListener('click', () => this.showBatchTagModal('add'));
-        }
-        
-        if (removeTagBtn) {
-          removeTagBtn.addEventListener('click', () => this.showBatchTagModal('remove'));
-        }
-        
-        if (clearSelectionBtn) {
-          clearSelectionBtn.addEventListener('click', () => {
-            this.clearImageSelection();
-          });
-        }
-      } else {
-        // 如果工具栏已存在，更新选中信息
-        const selectionInfo = batchToolbar.querySelector('.batch-selection-info');
-        if (selectionInfo) {
-          selectionInfo.textContent = `已选中 ${this.selectedImages.length} 个项目`;
-        }
-      }
+    try {
+      // 查找或创建批量操作工具栏
+      let batchToolbar = this.containerEl.querySelector('.batch-operation-toolbar');
       
-      // 显示工具栏
-      batchToolbar.removeClass('hidden');
-    } else {
-      // 如果没有选中的图片，隐藏批量操作工具栏
-      if (batchToolbar) {
-        batchToolbar.addClass('hidden');
-      }
+      if (this.selectedImages.length > 0) {
+        // 如果有选中的图片，显示批量操作工具栏
+        if (!batchToolbar) {
+          // 创建批量操作工具栏 - 添加到gallery-main的最后
+          const galleryMain = this.containerEl.querySelector('.gallery-main');
+          if (galleryMain) {
+            batchToolbar = (galleryMain as HTMLElement).createEl('div', { cls: 'batch-operation-toolbar' });
+          } else {
+            // 最后手段：在容器中创建
+            batchToolbar = this.containerEl.createEl('div', { cls: 'batch-operation-toolbar' });
+          }
+          
+          // 添加工具栏内容
+          batchToolbar.innerHTML = `
+            <div class="batch-toolbar-content">
+              <span class="batch-selection-info">已选中 ${this.selectedImages.length} 个项目</span>
+              <div class="batch-operation-controls">
+                <button class="batch-add-tag-btn">添加标签</button>
+                <button class="batch-remove-tag-btn">删除标签</button>
+                <button class="batch-clear-selection">清除选择</button>
+              </div>
+            </div>
+          `;
+          
+          // 添加事件监听器
+          const addTagBtn = batchToolbar.querySelector('.batch-add-tag-btn');
+          const removeTagBtn = batchToolbar.querySelector('.batch-remove-tag-btn');
+          const clearSelectionBtn = batchToolbar.querySelector('.batch-clear-selection');
+          
+          if (addTagBtn) {
+            addTagBtn.addEventListener('click', () => this.showBatchTagModal('add'));
+          }
+          
+          if (removeTagBtn) {
+            removeTagBtn.addEventListener('click', () => this.showBatchTagModal('remove'));
+          }
+          
+          if (clearSelectionBtn) {
+            clearSelectionBtn.addEventListener('click', () => {
+              this.clearImageSelection();
+            });
+          }
+        } else {
+          // 如果工具栏已存在，更新选中信息
+          const selectionInfo = batchToolbar.querySelector('.batch-selection-info');
+          if (selectionInfo) {
+            selectionInfo.textContent = `已选中 ${this.selectedImages.length} 个项目`;
+          }
+        }
+        
+        // 显示工具栏
+        batchToolbar.removeClass('hidden');
+      } else {
+        // 如果没有选中的图片，隐藏批量操作工具栏
+        if (batchToolbar) {
+          batchToolbar.addClass('hidden');
+        }
     }
   }
   
