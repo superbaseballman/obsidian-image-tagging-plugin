@@ -12,8 +12,20 @@ interface CachedImageInfo {
   lastFetchTime: number;
 }
 
+// 媒体信息缓存
+interface CachedMediaInfo {
+  width?: number;
+  height?: number;
+  resolution?: string;
+  duration?: string;
+  lastFetchTime: number;
+}
+
 // 缓存图片信息，避免重复加载
 const imageInfoCache = new Map<string, CachedImageInfo>();
+
+// 缓存媒体信息，避免重复加载
+const mediaInfoCache = new Map<string, CachedMediaInfo>();
 
 // 缓存过期时间（毫秒）
 const CACHE_EXPIRY_TIME = 30 * 60 * 1000; // 30分钟
@@ -105,6 +117,94 @@ export function getImageTaggingPlugin(app: App): ImageTaggingPlugin | null {
  */
 export async function getImageResolutionWithCache(file: TFile, app: App): Promise<{width: number, height: number, resolution: string} | null> {
   return ImageCacheManager.getImageResolutionWithCache(file, app);
+}
+
+/**
+ * 获取视频或音频文件的时长信息，使用缓存避免重复加载
+ * @param file - Obsidian TFile对象
+ * @param app - Obsidian App实例
+ * @returns 包含时长信息的字符串，失败时返回null
+ */
+export async function getMediaDurationWithCache(file: TFile, app: App): Promise<string | null> {
+  try {
+    // 检查缓存
+    const cached = mediaInfoCache.get(file.path);
+    if (cached && (Date.now() - cached.lastFetchTime) < CACHE_EXPIRY_TIME) {
+      return cached.duration || null;
+    }
+
+    // 创建临时媒体元素来获取时长
+    const fileUrl = app.vault.getResourcePath(file);
+    
+    return new Promise((resolve) => {
+      let mediaElement: HTMLVideoElement | HTMLAudioElement;
+      
+      // 根据文件类型创建适当的媒体元素
+      if (file.extension.toLowerCase().includes('mp3') || 
+          file.extension.toLowerCase().includes('wav') || 
+          file.extension.toLowerCase().includes('ogg') ||
+          file.extension.toLowerCase().includes('m4a') ||
+          file.extension.toLowerCase().includes('flac') ||
+          file.extension.toLowerCase().includes('aac') ||
+          file.extension.toLowerCase().includes('wma')) {
+        // 音频文件
+        mediaElement = document.createElement('audio');
+      } else {
+        // 视频文件
+        mediaElement = document.createElement('video');
+      }
+      
+      mediaElement.src = fileUrl;
+      mediaElement.preload = 'metadata';
+      
+      const onLoad = () => {
+        // 计算时长并格式化为 MM:SS 或 HH:MM:SS 格式
+        const duration = mediaElement.duration;
+        const hours = Math.floor(duration / 3600);
+        const minutes = Math.floor((duration % 3600) / 60);
+        const seconds = Math.floor(duration % 60);
+        
+        let durationStr = '';
+        if (hours > 0) {
+          durationStr = `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        } else {
+          durationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
+        
+        // 存入缓存
+        mediaInfoCache.set(file.path, {
+          duration: durationStr,
+          lastFetchTime: Date.now()
+        });
+        
+        // 清理元素
+        mediaElement.removeEventListener('loadedmetadata', onLoad);
+        mediaElement.removeEventListener('error', onError);
+        document.body.removeChild(mediaElement);
+        
+        resolve(durationStr);
+      };
+      
+      const onError = () => {
+        // 发生错误时清理元素并返回null
+        mediaElement.removeEventListener('loadedmetadata', onLoad);
+        mediaElement.removeEventListener('error', onError);
+        document.body.removeChild(mediaElement);
+        
+        resolve(null);
+      };
+      
+      mediaElement.addEventListener('loadedmetadata', onLoad);
+      mediaElement.addEventListener('error', onError);
+      
+      // 添加到 DOM 但隐藏
+      mediaElement.style.display = 'none';
+      document.body.appendChild(mediaElement);
+    });
+  } catch (error) {
+    Logger.warn(`获取媒体时长失败: ${file.path}`, error);
+    return null;
+  }
 }
 
 /**

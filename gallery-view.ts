@@ -1,6 +1,6 @@
 import { ItemView, WorkspaceLeaf, Notice, TFile, App } from 'obsidian';
 import { MediaData, ImageTaggingSettings, ImageDataManager, getMediaType } from './image-data-model';
-import { getImageResolutionWithCache, getImageTaggingPlugin, getSafeImagePath, preloadImageInfo } from './utils';
+import { getImageResolutionWithCache, getImageTaggingPlugin, getSafeImagePath, preloadImageInfo, getMediaDurationWithCache } from './utils';
 import { Logger } from './logger';
 import { GALLERY_VIEW_TYPE, CSS_CLASSES } from './constants';
 
@@ -515,143 +515,72 @@ export class GalleryView extends ItemView {
   }
 
 private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaData> {
-
     // 如果没有提供ID，则生成一个新的ID
-
     const imageId = id || this.generateId();
-
     
-
     // 获取文件信息
-
     const stat = file.stat;
-
     const path = file.path;
-
     const name = file.basename;
-
     const extension = file.extension;
-
     const size = this.formatFileSize(stat.size);
-
     const lastModified = stat.mtime;
-
     
-
     let resolution = '未知';
-
     let width = 0;
-
     let height = 0;
-
     
-
     const mediaType = getMediaType(file) || 'image';
-
     
-
     try {
-
       // 对于图片，使用缓存的图片分辨率获取方法
-
       if (mediaType === 'image') {
-
         const dimensions = await getImageResolutionWithCache(file, this.app);
-
         if (dimensions) {
-
           width = dimensions.width;
-
           height = dimensions.height;
-
           resolution = dimensions.resolution;
-
         }
-
-      } else if (mediaType === 'video') {
-
-        // 对于视频，暂时保持默认分辨率
-
-        resolution = '视频文件';
-
-      } else if (mediaType === 'audio') {
-
-        // 对于音频，暂时保持默认分辨率
-
-        resolution = '音频文件';
-
+      } else if (mediaType === 'video' || mediaType === 'audio') {
+        // 对于视频和音频文件，获取时长信息
+        const duration = await getMediaDurationWithCache(file, this.app);
+        resolution = duration ? `${duration}` : (mediaType === 'video' ? '视频文件' : '音频文件');
       }
-
-        } catch (e) {
-
-          Logger.warn(`无法获取媒体信息: ${path}`, e);
-
-        }
-
-    
-
-    // 从插件获取设置并根据设置确定标签
-
-    const plugin = getImageTaggingPlugin(this.app);
-
-    let tags: string[] = [];
-
-    if (plugin && plugin.settings.autoTagOnImport && plugin.settings.autoTagOnImportValue) {
-
-      // 如果启用了自动标签功能且有自定义标签值，则使用这些标签
-
-      tags = plugin.settings.autoTagOnImportValue
-
-        .split(',')
-
-        .map((tag: string) => tag.trim())
-
-        .filter((tag: string) => tag.length > 0);
-
+    } catch (e) {
+      Logger.warn(`无法获取媒体信息: ${path}`, e);
     }
-
     
-
+    // 从插件获取设置并根据设置确定标签
+    const plugin = getImageTaggingPlugin(this.app);
+    let tags: string[] = [];
+    if (plugin && plugin.settings.autoTagOnImport && plugin.settings.autoTagOnImportValue) {
+      // 如果启用了自动标签功能且有自定义标签值，则使用这些标签
+      tags = plugin.settings.autoTagOnImportValue
+        .split(',')
+        .map((tag: string) => tag.trim())
+        .filter((tag: string) => tag.length > 0);
+    }
+    
     // 创建媒体数据对象
-
     const imageData: MediaData = {
-
       id: imageId,
-
       path: path,
-
       title: name,
-
       tags: tags, // 使用根据设置确定的标签
-
       date: new Date().toISOString(),
-
       size: size,
-
       resolution: resolution,
-
       format: extension.toUpperCase(),
-
       description: '',
-
       originalName: file.name,
-
       lastModified: lastModified,
-
       width: width,
-
       height: height,
-
       fileSize: stat.size,
-
       type: mediaType
-
     };
 
-
-
     return imageData;
-
   }
 
   private generateId(): string {
@@ -833,7 +762,7 @@ private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaDa
 
             <span class="image-size">${image.size}</span>
 
-            <span class="image-resolution">${image.resolution}</span>
+            <span class="image-resolution">${image.type === 'image' ? '分辨率' : '时长'}: ${image.resolution}</span>
 
           </div>
 
@@ -1310,7 +1239,7 @@ private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaDa
 
                 <p><strong>格式:</strong> ${image.format}</p>
 
-                <p><strong>分辨率:</strong> ${image.resolution}</p>
+                <p><strong>${image.type === 'image' ? '分辨率' : '时长'}:</strong> ${image.resolution}</p>
 
                 <p><strong>修改时间:</strong> ${new Date(image.lastModified).toLocaleString()}</p>
 
@@ -1749,7 +1678,6 @@ private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaDa
       return; // 如果容器元素还没准备好，则直接返回
     }
     
-    try {
       // 查找或创建批量操作工具栏
       let batchToolbar = this.containerEl.querySelector('.batch-operation-toolbar');
       
@@ -1810,8 +1738,8 @@ private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaDa
         if (batchToolbar) {
           batchToolbar.addClass('hidden');
         }
-    }
-  }
+      }
+    } 
   
   // 显示批量标签操作模态框
   private showBatchTagModal(operation: 'add' | 'remove') {

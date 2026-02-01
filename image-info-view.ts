@@ -1,6 +1,6 @@
 import { ItemView, WorkspaceLeaf, TFile, Notice } from 'obsidian';
 import { MediaData, ImageTaggingSettings, ImageDataManager, getMediaType } from './image-data-model';
-import { getImageResolutionWithCache, getImageTaggingPlugin, getSafeImagePath, deleteImageFile } from './utils';
+import { getImageResolutionWithCache, getImageTaggingPlugin, getSafeImagePath, deleteImageFile, getMediaDurationWithCache } from './utils';
 import { Logger } from './logger';
 import { IMAGE_INFO_VIEW_TYPE } from './constants';
 
@@ -102,9 +102,10 @@ export class ImageView extends ItemView {
         if (mediaType === 'image') {
           const resolution = await this.getImageResolution(file);
           imageData.resolution = resolution;
-        } else {
-          // 对于视频和音频，暂时保持默认分辨率
-          imageData.resolution = mediaType === 'video' ? '视频文件' : '音频文件';
+        } else if (mediaType === 'video' || mediaType === 'audio') {
+          // 对于视频和音频，获取时长信息
+          const duration = await getMediaDurationWithCache(file, this.app);
+          imageData.resolution = duration ? `${duration}` : (mediaType === 'video' ? '视频文件' : '音频文件');
         }
           } catch (e) {
             Logger.debug('无法获取媒体信息:', e);
@@ -176,6 +177,10 @@ export class ImageView extends ItemView {
     fileInfoSection.createEl('label', { text: '文件信息' });
     
     const fileInfoContainer = fileInfoSection.createEl('div', { cls: 'file-info' });
+    
+    // 根据媒体类型确定第二列显示什么
+    let secondColumnLabel = imageData.type === 'image' ? '分辨率' : (imageData.type === 'video' ? '时长' : '时长');
+    
     fileInfoContainer.createEl('p', {}, (el) => {
       el.innerHTML = `<strong>路径:</strong> <a href="#" class="file-path-link" data-path="${imageData.path}">${imageData.path}</a>`;
       
@@ -194,8 +199,11 @@ export class ImageView extends ItemView {
     fileInfoContainer.createEl('p', { text: `${imageData.format ? `<strong>格式:</strong> ${imageData.format}` : ''}` }, (el) => {
       if(imageData.format) el.innerHTML = `<strong>格式:</strong> ${imageData.format}`;
     });
-    fileInfoContainer.createEl('p', { text: `${imageData.resolution ? `<strong>分辨率:</strong> ${imageData.resolution}` : ''}` }, (el) => {
-      if(imageData.resolution) el.innerHTML = `<strong>分辨率:</strong> ${imageData.resolution}`;
+    fileInfoContainer.createEl('p', { text: `${imageData.resolution ? `<strong>${secondColumnLabel}:</strong> ${imageData.resolution}` : ''}` }, (el) => {
+      if(imageData.resolution) {
+        const label = imageData.type === 'image' ? '分辨率' : (imageData.type === 'video' ? '时长' : '时长');
+        el.innerHTML = `<strong>${label}:</strong> ${imageData.resolution}`;
+      }
     });
     fileInfoContainer.createEl('p', {}, (el) => {
       el.innerHTML = `<strong>修改时间:</strong> ${new Date(imageData.lastModified).toLocaleString()}`;

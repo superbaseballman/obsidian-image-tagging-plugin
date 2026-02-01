@@ -3,7 +3,7 @@ import { MediaData, ImageTaggingSettings, DEFAULT_SETTINGS, ImageDataManager, ge
 import { DataMigration } from './data-migration';
 import { ImageView } from './image-info-view';
 import { GalleryView } from './gallery-view';
-import { getImageResolutionWithCache, getImageFileFromPath } from './utils';
+import { getImageResolutionWithCache, getImageFileFromPath, getMediaDurationWithCache } from './utils';
 import { Logger, LogLevel } from './logger';
 import { GALLERY_VIEW_TYPE, IMAGE_INFO_VIEW_TYPE, DEFAULT_JSON_STORAGE_PATH, DEFAULT_SUPPORTED_FORMATS, DEFAULT_CATEGORIES } from './constants';
 
@@ -374,81 +374,41 @@ this.registerEvent(
   }
 
   /**
-
    * 从 TFile 对象创建默认的 ImageData 结构。
-
    */
-
   private async createDefaultImageData(file: TFile): Promise<MediaData> {
-
     // 获取文件信息
-
     const stat = file.stat;
-
     const path = file.path;
-
     const name = file.basename;
-
     const extension = file.extension;
-
     const size = this.formatFileSize(stat.size);
-
     const lastModified = stat.mtime;
-
     
-
     let resolution = '未知';
-
     let width = 0;
-
     let height = 0;
-
     
-
     const mediaType = getMediaType(file) || 'image';
-
     
-
     try {
-
       // 对于图片，使用缓存的图片分辨率获取方法
-
       if (mediaType === 'image') {
-
         const dimensions = await getImageResolutionWithCache(file, this.app);
-
         if (dimensions) {
-
           width = dimensions.width;
-
           height = dimensions.height;
-
           resolution = dimensions.resolution;
-
         }
-
-      } else if (mediaType === 'video') {
-
-        // 对于视频，可以尝试获取时长等信息（暂时保持未知）
-
-        resolution = '视频文件';
-
-      } else if (mediaType === 'audio') {
-
-        // 对于音频，可以尝试获取时长等信息（暂时保持未知）
-
-        resolution = '音频文件';
-
+      } else if (mediaType === 'video' || mediaType === 'audio') {
+        // 对于视频和音频文件，获取时长信息
+        const duration = await getMediaDurationWithCache(file, this.app);
+        resolution = duration ? `${duration}` : (mediaType === 'video' ? '视频文件' : '音频文件');
       }
-
-        } catch (e) {
-
-          Logger.warn(`无法获取媒体信息: ${path}`, e);
-
-        }
-
+    } catch (e) {
+      console.warn(`无法获取媒体信息: ${path}`, e);
+    }
     
-
     // 根据设置确定标签
     let tags: string[] = [];
     if (this.settings.autoTagOnImport && this.settings.autoTagOnImportValue) {
@@ -458,43 +418,24 @@ this.registerEvent(
         .map(tag => tag.trim())
         .filter(tag => tag.length > 0);
     }
-
     
-
     return {
-
       id: `media_${Date.now()}_${path}`,
-
       path: path,
-
       title: name,
-
       tags: tags,
-
       date: new Date().toISOString(),
-
       size: size,
-
       resolution: resolution,
-
       format: extension.toUpperCase(),
-
       description: '',
-
       originalName: file.name,
-
       lastModified: lastModified,
-
       width: width,
-
       height: height,
-
       fileSize: stat.size,
-
       type: mediaType
-
     };
-
   }
 
   /**

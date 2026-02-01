@@ -11,7 +11,7 @@ export interface MediaData {
   tags: string[];          // 标签数组
   date: string;            // 添加/修改日期 (ISO 格式)
   size: string;            // 文件大小 (例如 "2.4 MB")
-  resolution: string;      // 分辨率 (对于视频/音频可能是时长等)
+  resolution: string;      // 分辨率（对于图片）或时长（对于视频/音频）
   format: string;          // 文件格式 (例如 "JPG", "MP4", "MP3")
   description: string;     // 描述
   originalName: string;    // 原始文件名
