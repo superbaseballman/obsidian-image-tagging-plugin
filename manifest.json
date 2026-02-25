@@ -1,7 +1,7 @@
 {
   "id": "image-tagging-obsidian",
   "name": "Image Tagging",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "minAppVersion": "0.15.0",
   "description": "为 Obsidian 中的图片附件添加标签管理功能，支持在侧边栏查看和编辑图片信息，并提供图库视图进行检索。",
   "author": "superbasballman",

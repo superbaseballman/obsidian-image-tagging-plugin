@@ -239,8 +239,8 @@ export class GalleryView extends ItemView {
     sortContainer.createEl('select', { 
       cls: 'sort-select' 
     }).innerHTML = `
+      <option value="date">按时间</option> 
       <option value="name">按名称</option>
-      <option value="date">按日期</option>
       <option value="size">按大小</option>
       <option value="tags">按标签数</option>
     `;
@@ -664,7 +664,7 @@ private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaDa
     
     // 应用排序
     const sortSelect = this.containerEl.querySelector('.sort-select') as HTMLSelectElement;
-    const sortBy = sortSelect ? sortSelect.value : 'name';
+    const sortBy = sortSelect ? sortSelect.value : 'data';
     
     images.sort((a, b) => {
       switch (sortBy) {
