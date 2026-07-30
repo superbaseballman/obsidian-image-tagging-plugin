@@ -9,7 +9,7 @@ build({
   minify: !isDev,
   platform: 'node',
   outfile: 'main.js',
-  external: ['obsidian'],
+  external: ['obsidian', 'electron'],
   logLevel: 'info',
   sourcemap: isDev,
 }).catch(() => process.exit(1));

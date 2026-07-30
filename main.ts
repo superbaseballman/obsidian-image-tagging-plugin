@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, Notice, Menu } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, Notice, Menu, FileSystemAdapter } from 'obsidian';
 import { MediaData, ImageTaggingSettings, DEFAULT_SETTINGS, ImageDataManager, getMediaType } from './image-data-model';
 import { DataMigration } from './data-migration';
 import { ImageView } from './image-info-view';
@@ -43,31 +43,44 @@ export default class ImageTaggingPlugin extends Plugin {
       }
       if (!imgEl) return;
 
+      // 尝试获取图片 src 并解析为 vault 内的文件
+      const src = imgEl.getAttribute('src');
+      if (!src) return;
+      let file: TFile | null = null;
+      if (src.startsWith('app://')) {
+        const files = this.app.vault.getFiles();
+        file = files.find(f => (this.app.vault.getResourcePath(f) === src)) || null;
+      } else {
+        const abstractFile = this.app.vault.getAbstractFileByPath(src);
+        file = abstractFile instanceof TFile ? abstractFile : null;
+      }
+      if (!file || !this.isSupportedImageFile(file)) return;
+
       // 构造自定义菜单
       const menu = new Menu();
       menu.addItem((item) => {
         item.setTitle('显示媒体信息').setIcon('image').onClick(async () => {
-          // 尝试获取图片 src
-          const src = imgEl!.getAttribute('src');
-          if (!src) return;
-          // 解析 src，找到 vault 内的图片文件
-          let file: TFile | null = null;
-          // Obsidian 通常图片 src 以 app:// 或 vault 路径开头
-          if (src.startsWith('app://')) {
-            // 通过 Obsidian API 查找 TFile
-            const files = this.app.vault.getFiles();
-            file = files.find(f => (this.app.vault.getResourcePath(f) === src)) || null;
+          if (!file) return;
+          await this.openImageInfoPanel();
+          await this.updateImageInfoPanel(file);
+        });
+      });
+      menu.addItem((item) => {
+        item.setTitle('在新标签页打开').setIcon('external-link').onClick(async () => {
+          if (!file) return;
+          const leaf = this.app.workspace.getLeaf('tab');
+          await leaf.openFile(file);
+        });
+      });
+      menu.addItem((item) => {
+        item.setTitle('用默认软件打开').setIcon('external-link').onClick(async () => {
+          if (!file) return;
+          const adapter = this.app.vault.adapter;
+          if (adapter instanceof FileSystemAdapter) {
+            const fullPath = adapter.getFullPath(file.path);
+            require('electron').shell.openPath(fullPath);
           } else {
-            // 可能是相对路径
-            const abstractFile = this.app.vault.getAbstractFileByPath(src);
-            file = abstractFile instanceof TFile ? abstractFile : null;
-          }
-          if (file && this.isSupportedImageFile(file)) {
-            // 打开 image-info-view 并显示该图片
-            await this.openImageInfoPanel();
-            await this.updateImageInfoPanel(file);
-          } else {
-            new Notice('未找到媒体文件或不支持的媒体格式');
+            new Notice('无法获取文件路径');
           }
         });
       });
@@ -262,6 +275,42 @@ this.registerEvent(
                   if (file && this.isSupportedImageFile(file as TFile)) {
                     await this.openImageInfoPanel();
                     await this.updateImageInfoPanel(file as TFile);
+                  } else {
+                    new Notice('未找到图片文件或不支持的图片格式');
+                  }
+                });
+            });
+            menu.addSeparator();
+            menu.addItem((item) => {
+              item
+                .setTitle('在新标签页打开')
+                .setIcon('external-link')
+                .onClick(async () => {
+                  const activeFile = view?.file || this.app.workspace.getActiveFile();
+                  const file = await this.getImageInfoFromPath(foundPath!, activeFile as TFile);
+                  if (file && this.isSupportedImageFile(file as TFile)) {
+                    const leaf = this.app.workspace.getLeaf('tab');
+                    await leaf.openFile(file);
+                  } else {
+                    new Notice('未找到图片文件或不支持的图片格式');
+                  }
+                });
+            });
+            menu.addItem((item) => {
+              item
+                .setTitle('用默认软件打开')
+                .setIcon('external-link')
+                .onClick(async () => {
+                  const activeFile = view?.file || this.app.workspace.getActiveFile();
+                  const file = await this.getImageInfoFromPath(foundPath!, activeFile as TFile);
+                  if (file && this.isSupportedImageFile(file as TFile)) {
+                    const adapter = this.app.vault.adapter;
+                    if (adapter instanceof FileSystemAdapter) {
+                      const fullPath = adapter.getFullPath(file.path);
+                      require('electron').shell.openPath(fullPath);
+                    } else {
+                      new Notice('无法获取文件路径');
+                    }
                   } else {
                     new Notice('未找到图片文件或不支持的图片格式');
                   }
@@ -1009,9 +1058,32 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
               .setTitle('查看图片信息')
               .setIcon('image')
               .onClick(() => {
-                // 打开图片信息面板并显示该图片的信息
                 this.openImageInfoPanel();
                 this.updateImageInfoPanel(file);
+              });
+          });
+          menu.addSeparator();
+          menu.addItem((item) => {
+            item
+              .setTitle('在新标签页打开')
+              .setIcon('external-link')
+              .onClick(async () => {
+                const leaf = this.app.workspace.getLeaf('tab');
+                await leaf.openFile(file);
+              });
+          });
+          menu.addItem((item) => {
+            item
+              .setTitle('用默认软件打开')
+              .setIcon('external-link')
+              .onClick(async () => {
+                const adapter = this.app.vault.adapter;
+                if (adapter instanceof FileSystemAdapter) {
+                  const fullPath = adapter.getFullPath(file.path);
+                  require('electron').shell.openPath(fullPath);
+                } else {
+                  new Notice('无法获取文件路径');
+                }
               });
           });
           menu.showAtPosition({ x: event.pageX, y: event.pageY });
