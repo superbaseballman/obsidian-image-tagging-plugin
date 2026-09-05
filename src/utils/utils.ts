@@ -1,5 +1,5 @@
 import { TFile, App, Workspace } from 'obsidian';
-import { ImageDataManager, ImageTaggingSettings, MediaData } from './image-data-model';
+import { ImageDataManager, ImageTaggingSettings, MediaData } from '../models/image-data-model';
 import { Logger } from './logger';
 import { ErrorHandler, ImageTaggingError } from './error-handler';
 import { ImageCacheManager } from './image-cache-manager';

@@ -1,7 +1,7 @@
-import { MediaData } from './image-data-model';
-import { getMediaType } from './image-data-model';
+import { MediaData } from '../models/image-data-model';
+import { getMediaType } from '../models/image-data-model';
 import { TFile, App } from 'obsidian';
-import { Logger } from './logger';
+import { Logger } from '../utils/logger';
 
 /**
  * 数据迁移接口 - 用于处理旧版本数据格式

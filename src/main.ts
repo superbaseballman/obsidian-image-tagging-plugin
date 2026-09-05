@@ -1,14 +1,14 @@
 import { App, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, Notice, Menu, FileSystemAdapter } from 'obsidian';
-import { MediaData, ImageTaggingSettings, DEFAULT_SETTINGS, ImageDataManager, getMediaType } from './image-data-model';
-import { DataMigration } from './data-migration';
-import { ImageView } from './image-info-view';
-import { GalleryView } from './gallery-view';
-import { getImageResolutionWithCache, getImageFileFromPath, getMediaDurationWithCache } from './utils';
-import { Logger, LogLevel } from './logger';
+import { MediaData, ImageTaggingSettings, DEFAULT_SETTINGS, ImageDataManager, getMediaType } from './models/image-data-model';
+import { DataMigration } from './services/data-migration';
+import { ImageView } from './views/image-info-view';
+import { GalleryView } from './views/gallery-view';
+import { getImageResolutionWithCache, getImageFileFromPath, getMediaDurationWithCache } from './utils/utils';
+import { Logger, LogLevel } from './utils/logger';
 import { GALLERY_VIEW_TYPE, IMAGE_INFO_VIEW_TYPE, DEFAULT_JSON_STORAGE_PATH, DEFAULT_SUPPORTED_FORMATS, DEFAULT_CATEGORIES } from './constants';
 
 // 导入样式
-import './styles.css';
+import '../styles.css';
 
 interface Listener {
   (this: Document, ev: Event): void;

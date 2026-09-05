@@ -1,8 +1,8 @@
 // image-data-model.ts - 媒体数据模型定义
 import { TFile, App } from 'obsidian';
-import { Logger } from './logger';
-import { DEFAULT_JSON_STORAGE_PATH, DEFAULT_SUPPORTED_FORMATS, DEFAULT_CATEGORIES } from './constants';
-import { DataMigration } from './data-migration';
+import { Logger } from '../utils/logger';
+import { DEFAULT_JSON_STORAGE_PATH, DEFAULT_SUPPORTED_FORMATS, DEFAULT_CATEGORIES } from '../constants';
+import { DataMigration } from '../services/data-migration';
 
 export interface MediaData {
   id: string;              // 唯一标识符

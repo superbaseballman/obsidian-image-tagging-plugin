@@ -3,7 +3,7 @@ import { build } from 'esbuild';
 const isDev = process.argv.includes('--dev');
 
 build({
-  entryPoints: ['main.ts'],
+  entryPoints: ['src/main.ts'],
   bundle: true,
   format: 'cjs',
   minify: !isDev,

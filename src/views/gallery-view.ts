@@ -1,8 +1,8 @@
 import { ItemView, WorkspaceLeaf, Notice, TFile, App } from 'obsidian';
-import { MediaData, ImageTaggingSettings, ImageDataManager, getMediaType } from './image-data-model';
-import { getImageResolutionWithCache, getImageTaggingPlugin, getSafeImagePath, preloadImageInfo, getMediaDurationWithCache } from './utils';
-import { Logger } from './logger';
-import { GALLERY_VIEW_TYPE, CSS_CLASSES } from './constants';
+import { MediaData, ImageTaggingSettings, ImageDataManager, getMediaType } from '../models/image-data-model';
+import { getImageResolutionWithCache, getImageTaggingPlugin, getSafeImagePath, preloadImageInfo, getMediaDurationWithCache } from '../utils/utils';
+import { Logger } from '../utils/logger';
+import { GALLERY_VIEW_TYPE, CSS_CLASSES } from '../constants';
 
 // 图库视图类
 

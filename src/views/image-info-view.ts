@@ -1,8 +1,8 @@
 import { ItemView, WorkspaceLeaf, TFile, Notice } from 'obsidian';
-import { MediaData, ImageTaggingSettings, ImageDataManager, getMediaType } from './image-data-model';
-import { getImageResolutionWithCache, getImageTaggingPlugin, getSafeImagePath, deleteImageFile, getMediaDurationWithCache } from './utils';
-import { Logger } from './logger';
-import { IMAGE_INFO_VIEW_TYPE } from './constants';
+import { MediaData, ImageTaggingSettings, ImageDataManager, getMediaType } from '../models/image-data-model';
+import { getImageResolutionWithCache, getImageTaggingPlugin, getSafeImagePath, deleteImageFile, getMediaDurationWithCache } from '../utils/utils';
+import { Logger } from '../utils/logger';
+import { IMAGE_INFO_VIEW_TYPE } from '../constants';
 
 export class ImageView extends ItemView {
   private imageDataManager: ImageDataManager;

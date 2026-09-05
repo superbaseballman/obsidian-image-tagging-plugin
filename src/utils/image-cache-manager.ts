@@ -3,7 +3,7 @@
  */
 import { TFile, App } from 'obsidian';
 import { Logger } from './logger';
-import { CACHE_EXPIRY_TIME } from './constants';
+import { CACHE_EXPIRY_TIME } from '../constants';
 
 // 图片信息缓存接口
 export interface CachedImageInfo {
