@@ -22,11 +22,14 @@ export default class ImageTaggingPlugin extends Plugin {
     await this.loadSettings();
     this.imageDataManager = new ImageDataManager();
 
-    // 从JSON文件加载数据
-    await this.loadDataFromFile();
-    
-    // 自动检测并迁移旧版本数据（如果需要）
-    await this.autoMigrateLegacyData();
+    // 在标签页布局就绪后再加载数据，确保界面（视图）已完全创建
+    this.app.workspace.onLayoutReady(async () => {
+      // 从JSON文件加载数据
+      await this.loadDataFromFile();
+
+      // 自动检测并迁移旧版本数据（如果需要）
+      await this.autoMigrateLegacyData();
+    });
 
     // 注册图片右键菜单
     this.registerDomEvent(document, 'contextmenu', async (evt: MouseEvent) => {
@@ -669,9 +672,8 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
         this.imageDataManager.importFromJSON(jsonData);
 
-              Logger.info('图片标签数据加载成功:', this.settings.jsonStoragePath);
-        
-              new Notice('图片标签数据加载成功。');
+        // 静默加载成功：仅记录日志，不打扰用户
+        Logger.info('图片标签数据加载成功:', this.settings.jsonStoragePath);
       } else {
 
         Logger.info('JSON数据文件不存在，将创建新文件:', this.settings.jsonStoragePath);

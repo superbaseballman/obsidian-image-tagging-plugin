@@ -30,6 +30,15 @@ export class GalleryView extends ItemView {
   
   lastSelectedImageId: string | null = null; // 存储最后选中的图片ID，用于Shift连续选择
 
+  // 分页状态
+  currentPage: number = 1;
+  pageSize: number = 60;
+  totalResults: number = 0;
+  totalPages: number = 1;
+  filteredImages: MediaData[] = []; // 过滤+排序后的全部结果，用于分页切片
+  private paginationEl: HTMLElement | null = null;
+  private searchDebounceTimer: number | null = null;
+
 
 
   constructor(leaf: WorkspaceLeaf, settings: ImageTaggingSettings, imageDataManager: ImageDataManager) {
@@ -63,7 +72,11 @@ export class GalleryView extends ItemView {
   }
 
   async onClose() {
-    // 无需特殊处理
+    // 清理防抖定时器，避免视图关闭后仍触发渲染
+    if (this.searchDebounceTimer !== null) {
+      window.clearTimeout(this.searchDebounceTimer);
+      this.searchDebounceTimer = null;
+    }
   }
 
   private createView() {
@@ -257,6 +270,9 @@ export class GalleryView extends ItemView {
     // 主要网格
     const gridContainer = mainContent.createEl('div', { cls: 'gallery-grid-container' });
     this.imageGrid = gridContainer.createEl('div', { cls: 'gallery-grid' });
+
+    // 分页控件栏（固定在网格下方）
+    this.paginationEl = mainContent.createEl('div', { cls: 'gallery-pagination' });
     
     // 添加事件监听器
     this.addEventListeners();
@@ -293,7 +309,7 @@ export class GalleryView extends ItemView {
 
         }
 
-        this.renderImages();
+        this.debouncedRenderImages();
 
       });
 
@@ -605,8 +621,13 @@ private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaDa
     this.renderImages();
   }
 
-  private renderImages() {
+  private renderImages(resetToFirst: boolean = true) {
     if (!this.imageGrid) return;
+
+    // 结果集发生变化时回到第一页（纯翻页请传 false，见 goToPage）
+    if (resetToFirst) {
+      this.currentPage = 1;
+    }
     
     // 获取所有图片数据
     let images = this.imageDataManager.getAllImageData();
@@ -685,11 +706,27 @@ private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaDa
       }
     });
     
+    // 缓存并统计当前过滤结果
+    this.filteredImages = images;
+    this.totalResults = images.length;
+    this.totalPages = Math.max(1, Math.ceil(images.length / this.pageSize));
+
+    // 校正当前页范围
+    if (this.currentPage > this.totalPages) this.currentPage = this.totalPages;
+    if (this.currentPage < 1) this.currentPage = 1;
+
+    // 仅渲染当前页的图片，避免一次性渲染全部导致大图库卡顿
+    const start = (this.currentPage - 1) * this.pageSize;
+    const pageImages = images.slice(start, start + this.pageSize);
+
+    // 更新分页控件
+    this.renderPagination();
+
     // 清空网格
     this.imageGrid.empty();
     
-    // 渲染图片
-    images.forEach(image => {
+    // 渲染当前页图片
+    pageImages.forEach(image => {
       // 验证图片路径有效
       if (!image.path) return;
       
@@ -716,13 +753,13 @@ private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaDa
       // 根据媒体类型生成不同的预览元素
       let previewElement = '';
       if (image.type === 'image') {
-        previewElement = `<img src="${mediaPath}" alt="${image.title}" class="image-preview">`;
+        previewElement = `<img src="${mediaPath}" alt="${image.title}" class="image-preview" loading="lazy" decoding="async">`;
       } else if (image.type === 'video') {
-        previewElement = `<video src="${mediaPath}" class="image-preview" controls></video>`;
+        previewElement = `<video src="${mediaPath}" class="image-preview" controls preload="metadata"></video>`;
       } else if (image.type === 'audio') {
-        previewElement = `<audio src="${mediaPath}" class="image-preview" controls></audio>`;
+        previewElement = `<audio src="${mediaPath}" class="image-preview" controls preload="metadata"></audio>`;
       } else {
-        previewElement = `<img src="${mediaPath}" alt="${image.title}" class="image-preview">`; // 默认作为图片处理
+        previewElement = `<img src="${mediaPath}" alt="${image.title}" class="image-preview" loading="lazy" decoding="async">`; // 默认作为图片处理
       }
       
       // 检查图片是否被选中
@@ -1442,7 +1479,7 @@ private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaDa
 
       closeModal();
 
-      this.renderImages(); // 重新渲染
+      this.renderImages(false); // 重新渲染（保留当前页，不跳回第一页）
 
     });
 
@@ -1835,7 +1872,7 @@ private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaDa
             }
             closeModal();
             new Notice(`已${operationText}标签到 ${this.selectedImages.length} 个图片`);
-            this.renderImages(); // 重新渲染以显示更改
+            this.renderImages(false); // 重新渲染以显示更改（保留当前页）
           }
         } else {
           new Notice('请输入标签');
@@ -1930,6 +1967,96 @@ private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaDa
       // 出错时忽略，保持默认宽高比
       Logger.warn(`无法获取图片尺寸:`, error);
     }
+  }
+
+  // 跳转到指定页（只切换结果，不重置到第一页）
+  private goToPage(page: number) {
+    if (!this.filteredImages || this.filteredImages.length === 0) return;
+    const target = Math.max(1, Math.min(this.totalPages, page));
+    if (target === this.currentPage) return;
+    this.currentPage = target;
+    this.renderImages(false);
+  }
+
+  // 渲染分页控件
+  private renderPagination() {
+    if (!this.paginationEl) return;
+
+    const total = this.totalResults;
+    const totalPages = this.totalPages;
+    const cur = Math.max(1, Math.min(this.totalPages, this.currentPage));
+
+    const pageBtn = (p: number) =>
+      `<button type="button" class="pagination-btn pagination-num${p === cur ? ' active' : ''}" data-page="${p}">${p}</button>`;
+    const pageButtons: string[] = [];
+    if (totalPages <= 7) {
+      for (let p = 1; p <= totalPages; p++) pageButtons.push(pageBtn(p));
+    } else {
+      const winStart = Math.max(1, cur - 2);
+      const winEnd = Math.min(totalPages, cur + 2);
+      if (winStart > 1) {
+        pageButtons.push(pageBtn(1));
+        if (winStart > 2) pageButtons.push('<span class="pagination-ellipsis">…</span>');
+      }
+      for (let p = winStart; p <= winEnd; p++) pageButtons.push(pageBtn(p));
+      if (winEnd < totalPages) {
+        if (winEnd < totalPages - 1) pageButtons.push('<span class="pagination-ellipsis">…</span>');
+        pageButtons.push(pageBtn(totalPages));
+      }
+    }
+
+    this.paginationEl.empty();
+    if (total === 0) {
+      this.paginationEl.createEl('span', { cls: 'pagination-info', text: '共 0 项' });
+      return;
+    }
+
+    this.paginationEl.innerHTML = `
+      <span class="pagination-info">共 ${total} 项 · 第 ${cur} / ${totalPages} 页</span>
+      <div class="pagination-controls">
+        <button type="button" class="pagination-btn pagination-prev"${cur <= 1 ? ' disabled' : ''}>&lsaquo;</button>
+        ${pageButtons.join('')}
+        <button type="button" class="pagination-btn pagination-next"${cur >= totalPages ? ' disabled' : ''}>&rsaquo;</button>
+      </div>
+      <span class="pagination-size">每页
+        <select class="pagination-size-select">
+          ${[24, 60, 120].map(s => `<option value="${s}"${s === this.pageSize ? ' selected' : ''}>${s}</option>`).join('')}
+        </select> 项
+      </span>
+    `;
+
+    const prevBtn = this.paginationEl.querySelector('.pagination-prev') as HTMLButtonElement;
+    const nextBtn = this.paginationEl.querySelector('.pagination-next') as HTMLButtonElement;
+    prevBtn?.addEventListener('click', () => this.goToPage(cur - 1));
+    nextBtn?.addEventListener('click', () => this.goToPage(cur + 1));
+
+    this.paginationEl.querySelectorAll('.pagination-num').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const p = Number((btn as HTMLElement).dataset.page);
+        if (!isNaN(p)) this.goToPage(p);
+      });
+    });
+
+    const sizeSelect = this.paginationEl.querySelector('.pagination-size-select') as HTMLSelectElement;
+    sizeSelect?.addEventListener('change', () => {
+      const v = parseInt(sizeSelect.value, 10);
+      if (!isNaN(v) && v > 0) {
+        this.pageSize = v;
+        this.currentPage = 1;
+        this.renderImages(false);
+      }
+    });
+  }
+
+  // 搜索输入防抖，避免每次按键都重建整个图库
+  private debouncedRenderImages() {
+    if (this.searchDebounceTimer !== null) {
+      window.clearTimeout(this.searchDebounceTimer);
+    }
+    this.searchDebounceTimer = window.setTimeout(() => {
+      this.searchDebounceTimer = null;
+      this.renderImages();
+    }, 250);
   }
 }
 

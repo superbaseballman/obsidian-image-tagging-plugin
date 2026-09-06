@@ -1335,3 +1335,94 @@
     justify-content: center;
   }
 }
+
+/* 图库分页控件 */
+.gallery-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 4px 0;
+  border-top: 1px solid var(--background-modifier-border);
+  margin-top: 15px;
+  flex-shrink: 0;
+}
+
+.gallery-pagination .pagination-info {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.gallery-pagination .pagination-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.gallery-pagination .pagination-pages {
+  display: contents;
+}
+
+.gallery-pagination .pagination-btn {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--background-modifier-border);
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+  border-radius: 4px;
+  font-size: 0.85em;
+  line-height: 1;
+  cursor: pointer;
+  text-align: center;
+}
+
+.gallery-pagination .pagination-btn:hover:not(.disabled):not(.active) {
+  background-color: var(--background-modifier-hover);
+}
+
+.gallery-pagination .pagination-btn.disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.gallery-pagination .pagination-btn.active {
+  background-color: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+  color: white;
+  cursor: default;
+}
+
+.gallery-pagination .pagination-ellipsis {
+  padding: 0 2px;
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.gallery-pagination .pagination-size {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.gallery-pagination .pagination-size select {
+  padding: 3px 6px;
+  border-radius: 4px;
+  background-color: var(--background-primary-alt);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-normal);
+}
+
+/* 响应式：窄屏时分页栏自动换行堆叠 */
+@media (max-width: 768px) {
+  .gallery-pagination {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
