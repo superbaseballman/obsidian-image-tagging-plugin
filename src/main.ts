@@ -1158,7 +1158,7 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
 
 
-    const removedCount = this.imageDataManager.cleanupInvalidImages(this.app, this.settings.scanFolderPath, this.settings.scanMultipleFolderPaths);
+    const removedData = this.imageDataManager.cleanupInvalidImages(this.app, this.settings.scanFolderPath, this.settings.scanMultipleFolderPaths);
 
 
 
@@ -1166,7 +1166,7 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
 
 
-    new Notice(`清理完成！移除了 ${removedCount} 个失效的图片数据记录。`);
+    new Notice(`清理完成！移除了 ${removedData.length} 个失效的图片数据记录。`);
 
 
 

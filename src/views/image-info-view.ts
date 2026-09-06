@@ -43,6 +43,27 @@ export class ImageView extends ItemView {
     return this.settings.supportedFormats?.includes(extension) || false;
   }
 
+  private isFileInScanFolders(filePath: string): boolean {
+    const normalizeFolderPath = (folderPath: string): string => {
+      const normalizedPath = folderPath.trim().replace(/\\/g, '/');
+      return normalizedPath.endsWith('/') ? normalizedPath : `${normalizedPath}/`;
+    };
+
+    const multipleFolderPaths = (this.settings.scanMultipleFolderPaths || [])
+      .map(folderPath => folderPath.trim())
+      .filter(folderPath => folderPath.length > 0);
+    const configuredFolderPaths = multipleFolderPaths.length > 0
+      ? multipleFolderPaths
+      : (this.settings.scanFolderPath?.trim() ? [this.settings.scanFolderPath] : []);
+
+    if (configuredFolderPaths.length === 0) return true;
+
+    const normalizedFilePath = filePath.replace(/\\/g, '/');
+    return configuredFolderPaths.some(folderPath =>
+      normalizedFilePath.startsWith(normalizeFolderPath(folderPath))
+    );
+  }
+
   private createView() {
     this.contentEl.empty();
     this.contentEl.addClass('image-info-panel');
@@ -110,8 +131,14 @@ export class ImageView extends ItemView {
           } catch (e) {
             Logger.debug('无法获取媒体信息:', e);
           }      
-      // 保存新创建的数据
-      this.imageDataManager.addImageData(imageData);
+      // 目录外媒体只用于展示，不自动加入图库记录
+      if (this.isFileInScanFolders(file.path)) {
+        this.imageDataManager.addImageData(imageData);
+        const plugin = getImageTaggingPlugin(this.app);
+        if (plugin) {
+          await plugin.saveDataToFile();
+        }
+      }
     }
 
     // 渲染媒体信息

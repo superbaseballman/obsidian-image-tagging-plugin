@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, Notice, TFile, App } from 'obsidian';
+import { ItemView, WorkspaceLeaf, Notice, TFile, App, Modal } from 'obsidian';
 import { MediaData, ImageTaggingSettings, ImageDataManager, getMediaType } from '../models/image-data-model';
 import { getImageResolutionWithCache, getImageTaggingPlugin, getSafeImagePath, preloadImageInfo, getMediaDurationWithCache } from '../utils/utils';
 import { Logger } from '../utils/logger';
@@ -59,7 +59,7 @@ export class GalleryView extends ItemView {
   async onOpen() {
     this.containerEl.empty();
     this.createView();
-    await this.refreshData();
+    await this.refreshGallery();
   }
 
   async onClose() {
@@ -381,7 +381,7 @@ export class GalleryView extends ItemView {
     this.imageDataManager = imageDataManager;
 
     // 清理无效媒体数据（删除不存在的或不在指定扫描路径内的媒体记录）
-    const removedCount = imageDataManager.cleanupInvalidImages(this.app, this.settings.scanFolderPath, this.settings.scanMultipleFolderPaths);
+    const removedData = imageDataManager.cleanupInvalidImages(this.app, this.settings.scanFolderPath, this.settings.scanMultipleFolderPaths);
     
     // 刷新媒体数据（根据设置扫描媒体）
     await this.scanImagesBasedOnSettings();
@@ -395,9 +395,13 @@ export class GalleryView extends ItemView {
     // 重新渲染
     this.renderImages();
 
+    if (removedData.length > 0) {
+      new DeletedMediaModal(this.app, removedData).open();
+    }
+
     // 获取最终的媒体计数用于通知
     const finalCount = imageDataManager.getAllImageData().length;
-    new Notice(`图库已刷新，清理了 ${removedCount} 个无效媒体记录，当前共有 ${finalCount} 个媒体项目`);
+    new Notice(`图库已刷新，清理了 ${removedData.length} 个无效媒体记录，当前共有 ${finalCount} 个媒体项目`);
   }
 
   private async scanImagesBasedOnSettings() {
@@ -1926,5 +1930,30 @@ private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaDa
       // 出错时忽略，保持默认宽高比
       Logger.warn(`无法获取图片尺寸:`, error);
     }
+  }
+}
+
+class DeletedMediaModal extends Modal {
+  private readonly removedData: MediaData[];
+
+  constructor(app: App, removedData: MediaData[]) {
+    super(app);
+    this.removedData = removedData;
+  }
+
+  onOpen() {
+    this.titleEl.setText('已删除的媒体记录');
+    this.contentEl.createEl('p', {
+      text: `以下 ${this.removedData.length} 条记录因文件不存在或不在扫描目录内而被删除：`
+    });
+
+    const list = this.contentEl.createEl('ul');
+    for (const mediaData of this.removedData) {
+      list.createEl('li', { text: mediaData.path });
+    }
+  }
+
+  onClose() {
+    this.contentEl.empty();
   }
 }

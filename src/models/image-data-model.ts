@@ -264,8 +264,8 @@ export class ImageDataManager {
   }
 
   // 清理失效的媒体数据
-  public cleanupInvalidImages(app: App, scanFolderPath?: string, scanMultipleFolderPaths?: string[]): number {
-    let removedCount = 0;
+  public cleanupInvalidImages(app: App, scanFolderPath?: string, scanMultipleFolderPaths?: string[]): MediaData[] {
+    const removedData: MediaData[] = [];
     const validData = new Map<string, MediaData>();
     const validPathToIdMap = new Map<string, string>();
 
@@ -308,7 +308,7 @@ export class ImageDataManager {
         validPathToIdMap.set(mediaData.path, id); // 同时保留路径映射
       } else {
         // 文件不存在或不在扫描路径内，跳过（相当于删除）
-        removedCount++;
+        removedData.push(mediaData);
         Logger.debug(`清理媒体数据: ${mediaData.path}`);
       }
     }
@@ -316,6 +316,6 @@ export class ImageDataManager {
     // 更新数据存储
     this.data = validData;
     this.pathToIdMap = validPathToIdMap;
-    return removedCount;
+    return removedData;
   }
 }
