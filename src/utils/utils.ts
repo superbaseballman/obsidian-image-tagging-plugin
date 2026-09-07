@@ -78,6 +78,7 @@ export function getSafeImagePath(app: App, path: string | undefined | null): str
 export interface ImageTaggingPlugin {
   imageDataManager: ImageDataManager;
   settings: ImageTaggingSettings;
+  dataReady: Promise<void>;
   saveDataToFile(): Promise<void>;
   loadDataFromFile(): Promise<void>;
   saveSettings(): Promise<void>;

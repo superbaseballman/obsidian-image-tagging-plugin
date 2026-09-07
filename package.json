@@ -1,6 +1,6 @@
 {
   "name": "obsidian-image-tagging-plugin",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "为 Obsidian 中的图片附件添加标签管理功能",
   "main": "main.js",
   "scripts": {

@@ -17,18 +17,19 @@ interface Listener {
 export default class ImageTaggingPlugin extends Plugin {
   settings: ImageTaggingSettings;
   imageDataManager: ImageDataManager;
+  dataReady: Promise<void>;
 
   async onload() {
     await this.loadSettings();
     this.imageDataManager = new ImageDataManager();
 
-    // 在标签页布局就绪后再加载数据，确保界面（视图）已完全创建
-    this.app.workspace.onLayoutReady(async () => {
-      // 从JSON文件加载数据
-      await this.loadDataFromFile();
-
-      // 自动检测并迁移旧版本数据（如果需要）
-      await this.autoMigrateLegacyData();
+    // 恢复布局中的视图可能在此回调完成前打开，先暴露数据就绪状态，避免视图扫描空数据并覆盖已有文件。
+    this.dataReady = new Promise<void>((resolve) => {
+      this.app.workspace.onLayoutReady(async () => {
+        await this.loadDataFromFile();
+        await this.autoMigrateLegacyData();
+        resolve();
+      });
     });
 
     // 注册图片右键菜单
@@ -1100,6 +1101,11 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
     // 总是创建一个新的标签页
     const leaf = workspace.getLeaf(true);
     await leaf.setViewState({ type: GALLERY_VIEW_TYPE, active: true });
+
+    const view = leaf.view;
+    if (view instanceof GalleryView) {
+      await view.initialize();
+    }
 
     workspace.revealLeaf(leaf);
   }

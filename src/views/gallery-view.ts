@@ -66,9 +66,18 @@ export class GalleryView extends ItemView {
   }
 
   async onOpen() {
+  }
+
+  async initialize() {
+    if (this.imageGrid) return;
+
     this.containerEl.empty();
     this.createView();
-    await this.refreshGallery();
+    const plugin = getImageTaggingPlugin(this.app);
+    if (plugin?.dataReady) {
+      await plugin.dataReady;
+    }
+    await this.refreshData();
   }
 
   async onClose() {
@@ -1976,6 +1985,10 @@ private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaDa
     if (target === this.currentPage) return;
     this.currentPage = target;
     this.renderImages(false);
+    const galleryGridContainer = this.containerEl.querySelector('.gallery-grid-container');
+    if (galleryGridContainer instanceof HTMLElement) {
+      galleryGridContainer.scrollTop = 0;
+    }
   }
 
   // 渲染分页控件
