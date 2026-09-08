@@ -1,9 +1,9 @@
 import { ItemView, WorkspaceLeaf, Notice, TFile, App, Modal } from 'obsidian';
-import { MediaData, ImageTaggingSettings, ImageDataManager, getMediaType } from '../models/image-data-model';
-import { getImageResolutionWithCache, getImageTaggingPlugin, getSafeImagePath, preloadImageInfo, getMediaDurationWithCache } from '../utils/utils';
-import { getFileMd5 } from '../utils/file-hash';
+import { MediaData, ImageTaggingSettings, ImageDataManager } from '../models/image-data-model';
+import { getImageTaggingPlugin, getSafeImagePath } from '../utils/utils';
 import { Logger } from '../utils/logger';
-import { GALLERY_VIEW_TYPE, CSS_CLASSES } from '../constants';
+import { GALLERY_VIEW_TYPE } from '../constants';
+import { resolveScanFolderPaths, isFileInFolderPaths } from '../utils/folders';
 
 // 图库视图类
 
@@ -470,20 +470,12 @@ export class GalleryView extends ItemView {
     // 获取所有文件
     let allFiles = this.app.vault.getFiles();
 
-    // 处理文件夹路径：优先使用新的多文件夹设置，如果为空则使用旧的单文件夹设置
-    let folderPathsToUse: string[] = [];
-
-    // 检查是否有新的多个文件夹路径设置
-    if (this.settings.scanMultipleFolderPaths && this.settings.scanMultipleFolderPaths.length > 0) {
-      folderPathsToUse = this.settings.scanMultipleFolderPaths.map(path => this.normalizePath(path));
-    } else if (this.settings.scanFolderPath && this.settings.scanFolderPath.trim() !== '') {
-      // 如果新的设置为空，但旧的设置有值，则使用旧设置
-      folderPathsToUse = [this.normalizePath(this.settings.scanFolderPath)];
-    }
+    // 解析扫描目录：优先多目录设置，回退到旧单目录；为空表示扫描整个库
+    const folderPathsToUse = resolveScanFolderPaths(this.settings.scanFolderPath, this.settings.scanMultipleFolderPaths);
 
     // 如果设置了扫描文件夹路径，则只扫描这些文件夹中的文件
     if (folderPathsToUse.length > 0) {
-      allFiles = allFiles.filter(file => this.isFileInFolder(file.path, folderPathsToUse));
+      allFiles = allFiles.filter(file => isFileInFolderPaths(file.path, folderPathsToUse));
     }
 
     let mediaCount = 0;
@@ -513,123 +505,6 @@ export class GalleryView extends ItemView {
     } else {
       new Notice('扫描完成！没有发现新的媒体文件');
     }
-  }
-
-  private normalizePath(path: string): string {
-    // 标准化路径，确保以 '/' 结尾以便正确匹配
-    let normalized = path.replace(/\\/g, '/');
-    if (!normalized.endsWith('/')) {
-      normalized += '/';
-    }
-    return normalized;
-  }
-
-  private isFileInFolder(filePath: string, folderPaths: string[]): boolean {
-    // 检查文件是否在任意一个指定的文件夹中
-    const normalizedFilePath = filePath.replace(/\\/g, '/');
-    return folderPaths.some(folderPath => normalizedFilePath.startsWith(folderPath));
-  }
-
-  private async saveDataToFile() {
-    // 保存数据到文件
-    let plugin = getImageTaggingPlugin(this.app);
-    
-    // 如果直接获取失败，尝试通过 workspace 获取
-    if (!plugin) {
-      // 遍历已加载的插件尝试找到当前插件
-      const allPlugins = (this.app as any).plugins.plugins;
-      if (allPlugins) {
-        for (const [id, pluginInstance] of Object.entries(allPlugins)) {
-          if (id === 'image-tagging-obsidian') {
-            plugin = pluginInstance as any;
-            break;
-          }
-        }
-      }
-    }
-    
-    if (plugin) {
-      await plugin.saveDataToFile();
-    }
-  }
-
-private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaData> {
-    // 若未显式指定 ID，则以文件内容 MD5 作为记录 ID：
-    // 保证记录 ID 只由文件内容决定，改名 / 移动不会导致 ID 变化
-    const imageId = id || await getFileMd5(file, this.app);
-    
-    // 获取文件信息
-    const stat = file.stat;
-    const path = file.path;
-    const name = file.basename;
-    const extension = file.extension;
-    const size = this.formatFileSize(stat.size);
-    const lastModified = stat.mtime;
-    
-    let resolution = '未知';
-    let width = 0;
-    let height = 0;
-    
-    const mediaType = getMediaType(file) || 'image';
-    
-    try {
-      // 对于图片，使用缓存的图片分辨率获取方法
-      if (mediaType === 'image') {
-        const dimensions = await getImageResolutionWithCache(file, this.app);
-        if (dimensions) {
-          width = dimensions.width;
-          height = dimensions.height;
-          resolution = dimensions.resolution;
-        }
-      } else if (mediaType === 'video' || mediaType === 'audio') {
-        // 对于视频和音频文件，获取时长信息
-        const duration = await getMediaDurationWithCache(file, this.app);
-        resolution = duration ? `${duration}` : (mediaType === 'video' ? '视频文件' : '音频文件');
-      }
-    } catch (e) {
-      Logger.warn(`无法获取媒体信息: ${path}`, e);
-    }
-    
-    // 从插件获取设置并根据设置确定标签
-    const plugin = getImageTaggingPlugin(this.app);
-    let tags: string[] = [];
-    if (plugin && plugin.settings.autoTagOnImport && plugin.settings.autoTagOnImportValue) {
-      // 如果启用了自动标签功能且有自定义标签值，则使用这些标签
-      tags = plugin.settings.autoTagOnImportValue
-        .split(',')
-        .map((tag: string) => tag.trim())
-        .filter((tag: string) => tag.length > 0);
-    }
-    
-    // 创建媒体数据对象
-    const imageData: MediaData = {
-      id: imageId,
-      path: path,
-      title: name,
-      tags: tags, // 使用根据设置确定的标签
-      date: new Date().toISOString(),
-      size: size,
-      resolution: resolution,
-      format: extension.toUpperCase(),
-      description: '',
-      originalName: file.name,
-      lastModified: lastModified,
-      width: width,
-      height: height,
-      fileSize: stat.size,
-      type: mediaType
-    };
-
-    return imageData;
-  }
-
-
-  private formatFileSize(bytes: number): string {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   }
 
   private loadData() {

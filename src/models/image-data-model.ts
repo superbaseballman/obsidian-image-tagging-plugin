@@ -1,8 +1,9 @@
 // image-data-model.ts - 媒体数据模型定义
 import { TFile, App } from 'obsidian';
 import { Logger } from '../utils/logger';
-import { DEFAULT_JSON_STORAGE_PATH, DEFAULT_SUPPORTED_FORMATS, DEFAULT_CATEGORIES } from '../constants';
+import { DEFAULT_JSON_STORAGE_PATH, DEFAULT_SUPPORTED_FORMATS, DEFAULT_CATEGORIES, IMAGE_FORMATS, VIDEO_FORMATS, AUDIO_FORMATS } from '../constants';
 import { DataMigration } from '../services/data-migration';
+import { isFileInFolderPaths, resolveScanFolderPaths } from '../utils/folders';
 
 export interface MediaData {
   id: string;              // 唯一标识符
@@ -86,13 +87,10 @@ export const isSupportedImageFile = isSupportedMediaFile;
 // 获取媒体类型
 export function getMediaType(file: TFile): 'image' | 'video' | 'audio' | null {
   const extension = file.extension ? file.extension.toLowerCase() : '';
-  const imageFormats = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'];
-  const videoFormats = ['mp4', 'avi', 'mov', 'mkv', 'webm'];
-  const audioFormats = ['mp3', 'wav', 'flac', 'aac', 'ogg'];
-  
-  if (imageFormats.includes(extension)) return 'image';
-  if (videoFormats.includes(extension)) return 'video';
-  if (audioFormats.includes(extension)) return 'audio';
+
+  if (IMAGE_FORMATS.includes(extension)) return 'image';
+  if (VIDEO_FORMATS.includes(extension)) return 'video';
+  if (AUDIO_FORMATS.includes(extension)) return 'audio';
   return null;
 }
 
@@ -392,38 +390,15 @@ export class ImageDataManager {
     const validData = new Map<string, MediaData>();
     const validPathToIdMap = new Map<string, string>();
 
+    // 解析扫描目录列表；为空数组表示未配置（扫描整个库，不限制）
+    const folderPaths = resolveScanFolderPaths(scanFolderPath, scanMultipleFolderPaths);
+
     for (const [id, mediaData] of this.data.entries()) {
       // 检查文件是否存在
       const file = app.vault.getAbstractFileByPath(mediaData.path);
-      
-      // 检查是否在指定的扫描路径内
-      let isInScanFolder = true;
-      
-      // 优先使用多个文件夹路径设置，如果为空则使用单个文件夹路径设置
-      if (scanMultipleFolderPaths && scanMultipleFolderPaths.length > 0) {
-        // 标准化路径以确保正确匹配
-        const normalizedFolderPaths = scanMultipleFolderPaths.map(path => {
-          let normalizedPath = path.replace(/\\/g, '/');
-          if (!normalizedPath.endsWith('/')) {
-            normalizedPath += '/';
-          }
-          return normalizedPath;
-        });
-        
-        // 检查媒体路径是否在任一扫描路径内
-        const normalizedMediaPath = mediaData.path.replace(/\\/g, '/');
-        isInScanFolder = normalizedFolderPaths.some(folderPath => normalizedMediaPath.startsWith(folderPath));
-      } else if (scanFolderPath && scanFolderPath.trim() !== '') {
-        // 标准化路径以確保正确匹配
-        let normalizedScanPath = scanFolderPath.replace(/\\/g, '/');
-        if (!normalizedScanPath.endsWith('/')) {
-          normalizedScanPath += '/';
-        }
-        
-        // 检查媒体路径是否在扫描路径内
-        const normalizedMediaPath = mediaData.path.replace(/\\/g, '/');
-        isInScanFolder = normalizedMediaPath.startsWith(normalizedScanPath);
-      }
+
+      // 检查是否在指定的扫描路径内（folderPaths 为空时不限制）
+      const isInScanFolder = isFileInFolderPaths(mediaData.path, folderPaths);
 
       if (file && file instanceof TFile && isInScanFolder) {
         // 文件存在且在扫描路径内，保留数据

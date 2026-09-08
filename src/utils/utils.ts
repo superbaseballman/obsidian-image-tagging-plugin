@@ -1,18 +1,14 @@
-import { TFile, App, Workspace } from 'obsidian';
+import { TFile, App } from 'obsidian';
 import { ImageDataManager, ImageTaggingSettings, MediaData } from '../models/image-data-model';
 import { Logger } from './logger';
-import { ErrorHandler, ImageTaggingError } from './error-handler';
 import { ImageCacheManager } from './image-cache-manager';
+import { CACHE_EXPIRY_TIME } from '../constants';
 
-// 图片信息缓存
-interface CachedImageInfo {
-  width: number;
-  height: number;
-  resolution: string;
-  lastFetchTime: number;
-}
+// 图片或媒体加载失败时的占位图（SVG data URI）
+const PLACEHOLDER_IMAGE =
+  'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWVlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlPC90ZXh0Pjwvc3ZnPg==';
 
-// 媒体信息缓存
+// 媒体信息缓存（视频/音频时长）
 interface CachedMediaInfo {
   width?: number;
   height?: number;
@@ -21,14 +17,8 @@ interface CachedMediaInfo {
   lastFetchTime: number;
 }
 
-// 缓存图片信息，避免重复加载
-const imageInfoCache = new Map<string, CachedImageInfo>();
-
 // 缓存媒体信息，避免重复加载
 const mediaInfoCache = new Map<string, CachedMediaInfo>();
-
-// 缓存过期时间（毫秒）
-const CACHE_EXPIRY_TIME = 30 * 60 * 1000; // 30分钟
 
 // 通用的图片路径处理函数
 export function getSafeImagePath(app: App, path: string | undefined | null): string {
@@ -36,15 +26,15 @@ export function getSafeImagePath(app: App, path: string | undefined | null): str
     // 首先检查路径是否为 undefined 或 null
     if (!path) {
       // 如果路径为空、undefined 或 null，返回占位符
-      return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWVlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlPC90ZXh0Pjwvc3ZnPg==';
+      return PLACEHOLDER_IMAGE;
     }
-    
+
     // 检查是否已经是 app:// 格式的 URL
     if (path.startsWith('app://')) {
       // 如果是 app:// 格式，直接使用它
       return path;
     }
-    
+
     // 如果路径不包含完整路径（例如只包含文件名），尝试在 vault 中查找
     if (!path.includes('/') && !path.includes('\\')) {
       // 如果只有文件名，尝试在 vault 中查找匹配的文件
@@ -54,12 +44,12 @@ export function getSafeImagePath(app: App, path: string | undefined | null): str
         return app.vault.getResourcePath(matchingFile);
       }
     }
-    
+
     // 检查文件是否存在再获取路径
     const abstractFile = app.vault.getAbstractFileByPath(path);
     if (!abstractFile) {
       // 如果文件不存在，返回占位符
-      return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWVlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlPC90ZXh0Pjwvc3ZnPg==';
+      return PLACEHOLDER_IMAGE;
     }
 
     // 只有当 abstractFile 是文件类型时，传入 getResourcePath
@@ -67,11 +57,11 @@ export function getSafeImagePath(app: App, path: string | undefined | null): str
       return app.vault.getResourcePath(abstractFile);
     }
 
-    return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWVlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlPC90ZXh0Pjwvc3ZnPg==';
+    return PLACEHOLDER_IMAGE;
   } catch (e) {
     // 如果 getResourcePath 失败，返回一个默认的占位符图像
     Logger.warn(`无法获取图片路径: ${path}`, e);
-    return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWVlIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlPC90ZXh0Pjwvc3ZnPg==';
+    return PLACEHOLDER_IMAGE;
   }
 }
 
@@ -109,6 +99,19 @@ export function getImageTaggingPlugin(app: App): ImageTaggingPlugin | null {
     console.error('获取插件实例时出错:', error);
     return null;
   }
+}
+
+/**
+ * 将字节数格式化为人类可读的文件大小字符串
+ * @param bytes - 字节数
+ * @returns 格式化后的字符串，如 "1 KB"、"2.35 MB"
+ */
+export function formatFileSize(bytes: number): string {
+  if (!bytes || bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
 /**

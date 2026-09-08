@@ -1,8 +1,9 @@
 import { ItemView, WorkspaceLeaf, TFile, Notice } from 'obsidian';
 import { MediaData, ImageTaggingSettings, ImageDataManager, getMediaType } from '../models/image-data-model';
-import { getImageResolutionWithCache, getImageTaggingPlugin, getSafeImagePath, deleteImageFile, getMediaDurationWithCache } from '../utils/utils';
+import { getImageResolutionWithCache, getImageTaggingPlugin, getSafeImagePath, deleteImageFile, getMediaDurationWithCache, formatFileSize } from '../utils/utils';
 import { Logger } from '../utils/logger';
 import { IMAGE_INFO_VIEW_TYPE } from '../constants';
+import { isFileInScanFolders } from '../utils/folders';
 
 export class ImageView extends ItemView {
   private imageDataManager: ImageDataManager;
@@ -41,27 +42,6 @@ export class ImageView extends ItemView {
     if (!file || !file.extension) return false;
     const extension = file.extension.toLowerCase();
     return this.settings.supportedFormats?.includes(extension) || false;
-  }
-
-  private isFileInScanFolders(filePath: string): boolean {
-    const normalizeFolderPath = (folderPath: string): string => {
-      const normalizedPath = folderPath.trim().replace(/\\/g, '/');
-      return normalizedPath.endsWith('/') ? normalizedPath : `${normalizedPath}/`;
-    };
-
-    const multipleFolderPaths = (this.settings.scanMultipleFolderPaths || [])
-      .map(folderPath => folderPath.trim())
-      .filter(folderPath => folderPath.length > 0);
-    const configuredFolderPaths = multipleFolderPaths.length > 0
-      ? multipleFolderPaths
-      : (this.settings.scanFolderPath?.trim() ? [this.settings.scanFolderPath] : []);
-
-    if (configuredFolderPaths.length === 0) return true;
-
-    const normalizedFilePath = filePath.replace(/\\/g, '/');
-    return configuredFolderPaths.some(folderPath =>
-      normalizedFilePath.startsWith(normalizeFolderPath(folderPath))
-    );
   }
 
   private createView() {
@@ -108,7 +88,7 @@ export class ImageView extends ItemView {
         title: file.basename,
         tags: [],
         date: new Date().toISOString(),
-        size: this.formatFileSize(file.stat.size),
+        size: formatFileSize(file.stat.size),
         fileSize: file.stat.size, // 添加原始字节大小
         resolution: '未知',
         format: file.extension.toUpperCase(),
@@ -128,11 +108,12 @@ export class ImageView extends ItemView {
           const duration = await getMediaDurationWithCache(file, this.app);
           imageData.resolution = duration ? `${duration}` : (mediaType === 'video' ? '视频文件' : '音频文件');
         }
-          } catch (e) {
-            Logger.debug('无法获取媒体信息:', e);
-          }      
+      } catch (e) {
+        Logger.debug('无法获取媒体信息:', e);
+      }
+
       // 目录外媒体只用于展示，不自动加入图库记录
-      if (this.isFileInScanFolders(file.path)) {
+      if (isFileInScanFolders(file.path, this.settings.scanFolderPath, this.settings.scanMultipleFolderPaths)) {
         this.imageDataManager.addImageData(imageData);
         const plugin = getImageTaggingPlugin(this.app);
         if (plugin) {
@@ -449,16 +430,6 @@ export class ImageView extends ItemView {
     
     // 通知用户保存成功
     new Notice(`已保存 ${imageData.title} 的信息`);
-  }
-
-  private formatFileSize(bytes: number): string {
-    if (bytes === 0) return '0 Bytes';
-    
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   }
 
   private async getImageResolution(file: TFile): Promise<string> {

@@ -3,11 +3,12 @@ import { MediaData, ImageTaggingSettings, DEFAULT_SETTINGS, ImageDataManager, ge
 import { DataMigration } from './services/data-migration';
 import { ImageView } from './views/image-info-view';
 import { GalleryView } from './views/gallery-view';
-import { getImageResolutionWithCache, getImageFileFromPath, getMediaDurationWithCache } from './utils/utils';
+import { getImageResolutionWithCache, getImageFileFromPath, getMediaDurationWithCache, formatFileSize } from './utils/utils';
 import { getFileMd5 } from './utils/file-hash';
 import { SqliteStore } from './services/sqlite-store';
 import { Logger, LogLevel } from './utils/logger';
 import { GALLERY_VIEW_TYPE, IMAGE_INFO_VIEW_TYPE, DEFAULT_JSON_STORAGE_PATH, DEFAULT_SUPPORTED_FORMATS, DEFAULT_CATEGORIES, SQLITE_STORAGE_PATH } from './constants';
+import { resolveScanFolderPaths, isFileInFolderPaths } from './utils/folders';
 
 // 导入样式
 import '../styles.css';
@@ -423,7 +424,7 @@ export default class ImageTaggingPlugin extends Plugin {
     const path = file.path;
     const name = file.basename;
     const extension = file.extension;
-    const size = this.formatFileSize(stat.size);
+    const size = formatFileSize(stat.size);
     const lastModified = stat.mtime;
     
     let resolution = '未知';
@@ -543,7 +544,7 @@ export default class ImageTaggingPlugin extends Plugin {
           originalName: file.name,
           lastModified: stat.mtime,
           fileSize: stat.size,
-          size: this.formatFileSize(stat.size),
+          size: formatFileSize(stat.size),
         };
         this.imageDataManager.addImageData(adopted);
         Logger.warn(`[改名继承] 认领删除宽限期内的原记录: ${pendingRecord.path} -> ${file.path}（保留 ${pendingRecord.tags.length} 个标签）`);
@@ -573,7 +574,7 @@ export default class ImageTaggingPlugin extends Plugin {
         record.originalName = file.name;
         record.lastModified = stat.mtime;
         record.fileSize = stat.size;
-        record.size = this.formatFileSize(stat.size);
+        record.size = formatFileSize(stat.size);
         Logger.debug(`已按内容继承原记录（改名/移动）: ${byContent.path} -> ${file.path}`);
         return this.imageDataManager.getImageDataByPath(file.path) || record;
       }
@@ -908,147 +909,62 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
   }
 
-    /**
+  /**
+   * 扫描 Vault 中的所有图片，并为新图片创建数据记录。
+   */
+  async scanAllImages() {
+    await this.dataReady;
 
-     * 扫描 Vault 中的所有图片，并为新图片创建数据记录。
+    new Notice('开始扫描媒体文件...');
 
-     */
+    let allFiles = this.app.vault.getFiles();
 
-    async scanAllImages() {
-      await this.dataReady;
+    // 解析扫描目录：优先多目录设置，回退到旧单目录；为空表示扫描整个库
+    const folderPathsToUse = resolveScanFolderPaths(
+      this.settings.scanFolderPath,
+      this.settings.scanMultipleFolderPaths
+    );
 
-      new Notice('开始扫描媒体文件...');
-
-  
-
-      let allFiles = this.app.vault.getFiles();
-
-  
-
-      // 处理文件夹路径：优先使用新的多文件夹设置，如果为空则使用旧的单文件夹设置
-
-      let folderPathsToUse: string[] = [];
-
-  
-
-      // 检查是否有新的多个文件夹路径设置
-
-      if (this.settings.scanMultipleFolderPaths && this.settings.scanMultipleFolderPaths.length > 0) {
-
-        folderPathsToUse = this.settings.scanMultipleFolderPaths.map(path => this.normalizePath(path));
-
-      } else if (this.settings.scanFolderPath && this.settings.scanFolderPath.trim() !== '') {
-
-        // 如果新的设置为空，但旧设置有值，则使用旧设置
-
-        folderPathsToUse = [this.normalizePath(this.settings.scanFolderPath)];
-
-      }
-
-  
-
-      // 如果设置了扫描文件夹路径，则只扫描这些文件夹中的文件
-
-      if (folderPathsToUse.length > 0) {
-
-        allFiles = allFiles.filter(file => this.isFileInFolder(file.path, folderPathsToUse));
-
-      }
-
-  
-
-      // 过滤出支持的媒体文件
-
-      const supportedFiles = allFiles.filter(file => this.isSupportedImageFile(file));
-
-  
-
-      // 检查哪些文件还没有数据记录
-
-      const filesToProcess = supportedFiles;
-
-  
-
-      let mediaCount = 0;
-
-  
-
-      // 批量处理文件以提高性能
-
-      const batchSize = 50; // 每批处理的文件数量
-
-      for (let i = 0; i < filesToProcess.length; i += batchSize) {
-
-        const batch = filesToProcess.slice(i, i + batchSize);
-
-        
-
-        // 并行处理当前批次的文件
-
-        const batchPromises = batch.map(async file => {
-
-          const existing = this.imageDataManager.getImageDataByPath(file.path);
-          const mediaData = await this.ensureImageDataForFile(file);
-
-          return { changed: !existing ? !!mediaData : (mediaData ? existing.id !== mediaData.id : false) };
-
-        });
-
-  
-
-        const results = await Promise.all(batchPromises);
-
-        mediaCount += results.filter(result => result.changed).length;
-
-  
-
-        // 更新通知，显示进度
-
-        if (i + batchSize < filesToProcess.length) {
-
-          new Notice(`正在扫描... 已处理 ${i + batch.length}/${filesToProcess.length} 个文件`);
-
-        }
-
-      }
-
-  
-
-      if (mediaCount > 0) {
-
-        await this.saveDataToFile();
-
-      }
-
-  
-
-      new Notice(`扫描完成！新增了 ${mediaCount} 个媒体记录`);
-
-  }
-
-  private normalizePath(path: string): string {
-    // 标准化路径，确保以 '/' 结尾以便正确匹配
-    let normalized = path.replace(/\\/g, '/');
-    if (!normalized.endsWith('/')) {
-      normalized += '/';
+    // 如果设置了扫描文件夹路径，则只扫描这些文件夹中的文件
+    if (folderPathsToUse.length > 0) {
+      allFiles = allFiles.filter(file => isFileInFolderPaths(file.path, folderPathsToUse));
     }
-    return normalized;
-  }
 
-  private isFileInFolder(filePath: string, folderPaths: string[]): boolean {
-    // 检查文件是否在任意一个指定的文件夹中
-    const normalizedFilePath = filePath.replace(/\\/g, '/');
-    return folderPaths.some(folderPath => normalizedFilePath.startsWith(folderPath));
-  }
+    // 过滤出支持的媒体文件
+    const supportedFiles = allFiles.filter(file => this.isSupportedImageFile(file));
 
-  private formatFileSize(bytes: number): string {
-    if (bytes === 0) return '0 Bytes';
-    
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    // 检查哪些文件还没有数据记录
+    const filesToProcess = supportedFiles;
+
+    let mediaCount = 0;
+
+    // 批量处理文件以提高性能
+    const batchSize = 50; // 每批处理的文件数量
+    for (let i = 0; i < filesToProcess.length; i += batchSize) {
+      const batch = filesToProcess.slice(i, i + batchSize);
+
+      // 并行处理当前批次的文件
+      const batchPromises = batch.map(async file => {
+        const existing = this.imageDataManager.getImageDataByPath(file.path);
+        const mediaData = await this.ensureImageDataForFile(file);
+
+        return { changed: !existing ? !!mediaData : (mediaData ? existing.id !== mediaData.id : false) };
+      });
+
+      const results = await Promise.all(batchPromises);
+      mediaCount += results.filter(result => result.changed).length;
+
+      // 更新通知，显示进度
+      if (i + batchSize < filesToProcess.length) {
+        new Notice(`正在扫描... 已处理 ${i + batch.length}/${filesToProcess.length} 个文件`);
+      }
+    }
+
+    if (mediaCount > 0) {
+      await this.saveDataToFile();
+    }
+
+    new Notice(`扫描完成！新增了 ${mediaCount} 个媒体记录`);
   }
 
   /**
