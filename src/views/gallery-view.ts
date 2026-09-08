@@ -77,7 +77,7 @@ export class GalleryView extends ItemView {
     if (plugin?.dataReady) {
       await plugin.dataReady;
     }
-    await this.refreshData();
+    await this.refreshGallery();
   }
 
   async onClose() {
