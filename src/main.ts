@@ -711,6 +711,51 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
     }
   }
 
+  async exportJson(): Promise<void> {
+    try {
+      const electron = require('electron');
+      const dialog = electron.remote?.dialog || electron.dialog;
+      const basePath = (this.app.vault.adapter as any).getBasePath?.() || '';
+      const defaultPath = basePath
+        ? `${basePath}${require('path').sep}image-tags-export.json`
+        : 'image-tags-export.json';
+      const result = await dialog.showSaveDialog({
+        title: '导出 JSON 数据',
+        defaultPath,
+        filters: [{ name: 'JSON 文件', extensions: ['json'] }]
+      });
+      if (result.canceled || !result.filePath) return;
+
+      require('fs').writeFileSync(result.filePath, this.imageDataManager.exportToJSON(), 'utf8');
+      new Notice(`JSON 数据已导出：${result.filePath}`);
+    } catch (error) {
+      Logger.error('导出 JSON 数据失败:', error);
+      new Notice('导出 JSON 数据失败，请查看控制台。');
+    }
+  }
+
+  async importJsonFromDialog(): Promise<void> {
+    try {
+      const electron = require('electron');
+      const dialog = electron.remote?.dialog || electron.dialog;
+      const result = await dialog.showOpenDialog({
+        title: '选择 JSON 数据',
+        properties: ['openFile'],
+        filters: [{ name: 'JSON 文件', extensions: ['json'] }]
+      });
+      if (result.canceled || result.filePaths.length === 0) return;
+
+      const jsonData = require('fs').readFileSync(result.filePaths[0], 'utf8');
+      const records = await DataMigration.loadDataWithMigrationForApp(jsonData, this.app);
+      this.imageDataManager.importRecords(records);
+      await this.sqliteStore.save(this.imageDataManager.getAllImageData());
+      new Notice(`已导入 ${records.length} 条 JSON 数据。`);
+    } catch (error) {
+      Logger.error('导入 JSON 数据失败:', error);
+      new Notice('导入 JSON 数据失败，请确认文件格式正确。');
+    }
+  }
+
   async saveDataToFile() {
     this.saveQueue = this.saveQueue.then(async () => {
       try {
@@ -1068,13 +1113,16 @@ class ImageTaggingSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('旧 JSON 数据路径')
-      .setDesc('仅用于首次迁移旧版本数据；当前数据存储在 .obsidian/image-tags.db')
-      .addText(text => text
-        .setPlaceholder('.obsidian/image-tags.json')
-        .setValue(this.plugin.settings.jsonStoragePath)
-        .onChange(async (value) => {
-          this.plugin.settings.jsonStoragePath = value;
-          await this.plugin.saveSettings();
+      .setDesc('当前数据存储在 .obsidian/image-tags.db，可从本地文件选择旧 JSON 进行迁移')
+      .addButton(button => button
+        .setButtonText('选择并迁移')
+        .onClick(async () => {
+          await this.plugin.importJsonFromDialog();
+        }))
+      .addButton(button => button
+        .setButtonText('导出 JSON')
+        .onClick(async () => {
+          await this.plugin.exportJson();
         }));
 
     new Setting(containerEl)

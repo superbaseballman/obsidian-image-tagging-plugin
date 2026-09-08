@@ -101,15 +101,37 @@ export class DataMigration {
       if (this.isLegacyFormat(parsed)) {
         Logger.info('检测到旧版本数据格式，开始迁移...');
         const legacyData = parsed as LegacyImageData[];
-        return this.migrateFromLegacy(legacyData);
+        return this.extractMediaData(this.migrateFromLegacy(legacyData));
       } else {
-        // 如果是新版本格式，直接返回
-        return parsed as MediaData[];
+        return this.extractMediaData(parsed);
       }
     } catch (error) {
       Logger.error('解析 JSON 数据失败:', error);
       throw error;
     }
+  }
+
+  private static extractMediaData(data: unknown[]): MediaData[] {
+    return data
+      .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+      .map((item): MediaData => ({
+        id: typeof item.id === 'string' ? item.id : '',
+        path: typeof item.path === 'string' ? item.path : '',
+        title: typeof item.title === 'string' ? item.title : '',
+        tags: Array.isArray(item.tags) ? item.tags.filter((tag): tag is string => typeof tag === 'string') : [],
+        date: typeof item.date === 'string' ? item.date : new Date().toISOString(),
+        size: typeof item.size === 'string' ? item.size : '',
+        resolution: typeof item.resolution === 'string' ? item.resolution : '未知',
+        format: typeof item.format === 'string' ? item.format : '',
+        description: typeof item.description === 'string' ? item.description : '',
+        originalName: typeof item.originalName === 'string' ? item.originalName : '',
+        lastModified: typeof item.lastModified === 'number' ? item.lastModified : 0,
+        width: typeof item.width === 'number' ? item.width : undefined,
+        height: typeof item.height === 'number' ? item.height : undefined,
+        fileSize: typeof item.fileSize === 'number' ? item.fileSize : undefined,
+        type: item.type === 'video' || item.type === 'audio' ? item.type : 'image'
+      }))
+      .filter((item) => item.id.length > 0 && item.path.length > 0);
   }
 
   static async loadDataWithMigrationForApp(jsonData: string, app: App): Promise<MediaData[]> {

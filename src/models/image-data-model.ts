@@ -247,7 +247,7 @@ export class ImageDataManager {
   exportToJSON(): string {
     return JSON.stringify(Array.from(this.data.values()), null, 2);
   }
-  
+
   // 验证数据结构 - 兼容新旧版本格式
   private isValidImageData(data: unknown): data is MediaData {
     if (typeof data !== 'object' || data === null) {
