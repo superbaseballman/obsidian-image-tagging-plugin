@@ -112,16 +112,18 @@ export class ImageDataManager {
   addImageData(mediaData: MediaData): void {
     const pathOwner = this.pathToIdMap.get(mediaData.path);
     if (pathOwner && pathOwner !== mediaData.id) {
+      // 该路径已被另一条记录占用：让新记录接管路径，并移除旧的占用记录
       this.data.delete(pathOwner);
+      this.pathToIdMap.delete(mediaData.path);
     }
 
-    // 如果之前存在相同路径的数据，先删除旧的路径映射
+    // id（内容 MD5）已被其它路径的记录占用：说明存在多份内容相同的拷贝。
+    // 保留已有记录不动，为新记录分配稳定的序号后缀（不依赖路径，纯改名不会导致 id 漂移）。
     const existingData = this.data.get(mediaData.id);
     if (existingData && existingData.path !== mediaData.path) {
-      this.pathToIdMap.delete(existingData.path);
-      mediaData = { ...mediaData, id: this.createCollisionId(mediaData.id, mediaData.path) };
+      mediaData = { ...mediaData, id: this.allocateCollisionId(mediaData.id) };
     }
-    
+
     this.data.set(mediaData.id, mediaData);
     this.pathToIdMap.set(mediaData.path, mediaData.id); // 添加路径到ID的映射
     
@@ -129,13 +131,39 @@ export class ImageDataManager {
     this.updateRecentTags(mediaData.tags);
   }
 
-  private createCollisionId(id: string, path: string): string {
-    let hash = 2166136261;
-    for (let index = 0; index < path.length; index++) {
-      hash ^= path.charCodeAt(index);
-      hash = Math.imul(hash, 16777619);
+  // 为相同内容（相同 MD5）的多份拷贝分配稳定的序号后缀：md5-2、md5-3 …
+  // 不再使用路径哈希，避免纯改名/移动导致记录 id 变化。
+  private allocateCollisionId(baseId: string): string {
+    let index = 2;
+    while (this.data.has(`${baseId}-${index}`)) {
+      index += 1;
     }
-    return `${id}-${(hash >>> 0).toString(16)}`;
+    return `${baseId}-${index}`;
+  }
+
+  /**
+   * 处理文件重命名/移动：保留原记录（id、标签、描述不变），仅更新路径与映射。
+   * @returns 更新后的记录；若无对应记录则返回 undefined
+   */
+  renamePath(oldPath: string, newPath: string): MediaData | undefined {
+    if (oldPath === newPath) return undefined;
+    const id = this.pathToIdMap.get(oldPath);
+    if (!id) return undefined;
+    const record = this.data.get(id);
+    if (!record) return undefined;
+
+    // 目标路径若已被其它记录占用，移除占用者，保持 path -> id 映射一致
+    const otherOwner = this.pathToIdMap.get(newPath);
+    if (otherOwner && otherOwner !== id) {
+      this.data.delete(otherOwner);
+      this.pathToIdMap.delete(newPath);
+    }
+
+    // 清理旧路径映射，更新记录路径，建立新路径映射（id 保持不变）
+    this.pathToIdMap.delete(oldPath);
+    record.path = newPath;
+    this.pathToIdMap.set(newPath, id);
+    return record;
   }
   
   // 获取媒体数据
@@ -162,6 +190,18 @@ export class ImageDataManager {
     const id = this.pathToIdMap.get(path);
     if (id) {
       return this.data.get(id);
+    }
+    return undefined;
+  }
+
+  // 按内容标识查找记录：id 可能为 md5 或 md5-<序号>（同内容多拷贝）。
+  // 优先返回与 contentId 完全相等的记录，其次返回由它派生的记录。
+  getImageDataByContentId(contentId: string): MediaData | undefined {
+    const exact = this.data.get(contentId);
+    if (exact) return exact;
+    const prefix = `${contentId}-`;
+    for (const [id, record] of this.data) {
+      if (id.startsWith(prefix)) return record;
     }
     return undefined;
   }

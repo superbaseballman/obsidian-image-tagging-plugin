@@ -12,6 +12,10 @@ import { GALLERY_VIEW_TYPE, IMAGE_INFO_VIEW_TYPE, DEFAULT_JSON_STORAGE_PATH, DEF
 // 导入样式
 import '../styles.css';
 
+// 删除确认宽限期：Obsidian 有时会把「改名 / 移动」拆成 delete + create 两个事件，
+// 在该时间段内若出现内容 MD5 相同的新文件，则保留原记录（id / 标签 / 描述不变）。
+const PENDING_DELETE_GRACE_MS = 20000;
+
 interface Listener {
   (this: Document, ev: Event): void;
 }
@@ -22,6 +26,9 @@ export default class ImageTaggingPlugin extends Plugin {
   dataReady: Promise<void>;
   private sqliteStore: SqliteStore;
   private saveQueue: Promise<void> = Promise.resolve();
+  // 删除宽限期内的记录（key 为记录 id）：外部改名常被拆分为 delete + create，
+  // 期间若出现内容 MD5 相同的文件则认领该记录，保证 id / 标签 / 描述不丢失。
+  private pendingDeleted = new Map<string, { record: MediaData; timer: number }>();
 
   async onload() {
     await this.loadSettings();
@@ -167,73 +174,44 @@ export default class ImageTaggingPlugin extends Plugin {
 
 
 
-    // 注册文件删除事件，用于清理失效的图片数据
-this.registerEvent(
-
+    // 注册文件删除事件：不立即删除记录，而是进入删除宽限期。
+    // Obsidian 常把「外部改名 / 移动」报告为 delete + create 两个事件，
+    // 立即删除会让记录（id / 标签 / 描述）在新文件出现前就已丢失。
+    this.registerEvent(
       this.app.vault.on('delete', (file) => {
-
         if (file && this.isSupportedImageFile(file as TFile)) {
-
-          // 检查是否有对应的图片数据
-
           const imageData = this.imageDataManager.getImageDataByPath(file.path);
-
           if (imageData) {
-
-            // 从数据管理器中移除对应的记录
-
-            this.imageDataManager.removeImageData(imageData.id);
-
-            // 保存更改到文件
-
-            this.saveDataToFile();
-
-            Logger.debug(`已清理已删除图片的数据: ${file.path}`);
-
+            this.schedulePendingDeletion(imageData, file.path);
           }
-
         }
-
       })
-
     );
 
-
-
-        // 注册文件重命名事件，用于更新图片路径
-
+    // 注册文件新建事件：若新文件与宽限期内的记录内容 MD5 相同（典型的外部改名场景），
+    // 认领并恢复原记录，保证纯改名后 id / 标签 / 描述不丢失。
     this.registerEvent(
-
-      this.app.vault.on('rename', (file, oldPath) => {
-
-        if (file && this.isSupportedImageFile(file as TFile)) {
-
-          // 检查是否有对应的图片数据
-
-          const imageData = this.imageDataManager.getImageDataByPath(oldPath);
-
-          if (imageData) {
-
-            // 更新图片数据中的路径信息
-
-            imageData.path = file.path;
-
-            // 重新添加到数据管理器
-
-            this.imageDataManager.addImageData(imageData);
-
-            // 保存更改到文件
-
-            this.saveDataToFile();
-
-            Logger.debug(`已更新重命名图片的路径: ${oldPath} -> ${file.path}`);
-
-          }
-
+      this.app.vault.on('create', (file) => {
+        if (file && file instanceof TFile && this.isSupportedImageFile(file)) {
+          void this.handleFileCreated(file);
         }
-
       })
+    );
 
+    // 注册文件重命名事件，用于更新图片路径（保留原记录 id）
+    this.registerEvent(
+      this.app.vault.on('rename', (file, oldPath) => {
+        if (file && this.isSupportedImageFile(file as TFile)) {
+          const updated = this.imageDataManager.renamePath(oldPath, file.path);
+          if (updated) {
+            this.saveDataToFile();
+            Logger.debug(`已更新重命名图片的路径: ${oldPath} -> ${file.path}`);
+          } else {
+            // 记录可能已进入删除宽限期，或已是残留的孤儿记录：尝试按内容认领 / 继承
+            void this.handleFileCreated(file as TFile);
+          }
+        }
+      })
     );
 
 
@@ -497,6 +475,10 @@ this.registerEvent(
     const existing = this.imageDataManager.getImageDataByPath(file.path);
     const currentId = await getFileMd5(file, this.app);
     if (!existing) {
+      // 先尝试按内容继承残留记录（改名/移动产生），避免新建空记录丢失标签
+      const adopted = this.adoptOrphanRecord(file, currentId);
+      if (adopted) return adopted;
+
       const created = await this.createDefaultImageData(file);
       this.imageDataManager.addImageData(created);
       return this.imageDataManager.getImageDataByPath(file.path) || created;
@@ -507,6 +489,109 @@ this.registerEvent(
     const updated: MediaData = { ...existing, id: currentId, path: file.path };
     this.imageDataManager.addImageData(updated);
     return this.imageDataManager.getImageDataByPath(file.path) || updated;
+  }
+
+  /**
+   * 内容继承：当库中存在「id 与文件内容 MD5 一致、但原路径文件已不存在」的残留记录
+   * （典型：插件未运行 / 未触发 rename 事件时的改名、移动），将该记录迁移到新路径，
+   * 保留其 id、标签、标题、描述，而不是删除后新建空记录。
+   * @returns 被继承的记录；无可继承对象或属于真实双拷贝时返回 undefined
+   */
+  private adoptOrphanRecord(file: TFile, contentMd5: string): MediaData | undefined {
+    if (this.imageDataManager.getImageDataByPath(file.path)) return undefined;
+    const orphan = this.imageDataManager.getImageDataByContentId(contentMd5);
+    if (!orphan) return undefined;
+
+    // 若同内容的另一份拷贝仍真实存在，则属于双拷贝而非改名，不应合并
+    const orphanFile = this.app.vault.getAbstractFileByPath(orphan.path);
+    if (orphanFile instanceof TFile) return undefined;
+
+    const stat = file.stat;
+    const record = this.imageDataManager.renamePath(orphan.path, file.path);
+    if (!record) return undefined;
+    record.title = file.basename;
+    record.originalName = file.name;
+    record.lastModified = stat.mtime;
+    record.fileSize = stat.size;
+    record.size = this.formatFileSize(stat.size);
+    Logger.debug(`已按内容继承原记录（改名/移动）: ${orphan.path} -> ${file.path}`);
+    return record;
+  }
+
+  // ===== 删除宽限期与内容认领：让“纯改名”保留原 id 与标签 =====
+
+  /**
+   * 把待删除记录移出内存并进入宽限期；若宽限期内出现内容相同（MD5 一致）的新文件
+   * （Obsidian 将外部改名报告为 delete + create），会通过 tryAdoptPendingDeleted 恢复记录。
+   * 宽限期结束仍未认领则确认删除并落盘。
+   */
+  private schedulePendingDeletion(imageData: MediaData, deletedPath: string): void {
+    this.imageDataManager.removeImageData(imageData.id);
+
+    const existing = this.pendingDeleted.get(imageData.id);
+    if (existing) window.clearTimeout(existing.timer);
+
+    const timer = window.setTimeout(() => {
+      this.pendingDeleted.delete(imageData.id);
+      this.saveDataToFile();
+      Logger.debug(`已确认删除媒体数据: ${deletedPath}`);
+    }, PENDING_DELETE_GRACE_MS);
+
+    this.pendingDeleted.set(imageData.id, { record: imageData, timer });
+  }
+
+  /**
+   * 新文件出现 / 改名但无路径记录时统一入口：
+   * 1) 若处于删除宽限期（delete 事件先行）→ 按内容 MD5 认领原记录；
+   * 2) 否则若库中存在同内容的孤儿记录 → 按内容继承（保留 id / 标签 / 描述）。
+   */
+  private async handleFileCreated(file: TFile): Promise<void> {
+    if (this.imageDataManager.getImageDataByPath(file.path)) return;
+    if (await this.tryAdoptPendingDeleted(file)) return;
+
+    const contentMd5 = await getFileMd5(file, this.app);
+    const adopted = this.adoptOrphanRecord(file, contentMd5);
+    if (adopted) {
+      await this.saveDataToFile();
+    }
+  }
+
+  /**
+   * 在删除宽限期内查找与新文件内容 MD5 一致的记录并认领，保留原 id / 标签 / 描述。
+   * @returns 是否成功认领
+   */
+  private async tryAdoptPendingDeleted(file: TFile): Promise<boolean> {
+    if (this.pendingDeleted.size === 0) return false;
+    if (this.imageDataManager.getImageDataByPath(file.path)) return false;
+
+    const contentMd5 = await getFileMd5(file, this.app);
+    for (const [id, entry] of this.pendingDeleted) {
+      if (!this.isIdDerivedFromMd5(entry.record.id, contentMd5)) continue;
+
+      window.clearTimeout(entry.timer);
+      this.pendingDeleted.delete(id);
+
+      const stat = file.stat;
+      const adopted: MediaData = {
+        ...entry.record,
+        path: file.path,
+        title: file.basename,
+        originalName: file.name,
+        lastModified: stat.mtime,
+        fileSize: stat.size,
+        size: this.formatFileSize(stat.size),
+      };
+      this.imageDataManager.addImageData(adopted);
+      await this.saveDataToFile();
+      Logger.debug(`检测到相同内容的新文件，已保留原记录并更新路径: ${file.path}`);
+      return true;
+    }
+    return false;
+  }
+
+  // 记录 id 是否为某内容 MD5 派生（id 形如 md5 或 md5-<后缀>）
+  private isIdDerivedFromMd5(recordId: string, contentMd5: string): boolean {
+    return recordId === contentMd5 || recordId.startsWith(`${contentMd5}-`);
   }
 
   /**
@@ -597,6 +682,11 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
   onunload() {
     this.app.workspace.detachLeavesOfType(GALLERY_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(IMAGE_INFO_VIEW_TYPE);
+    // 清理删除宽限期计时器，避免卸载后仍触发保存
+    for (const [, entry] of this.pendingDeleted) {
+      window.clearTimeout(entry.timer);
+    }
+    this.pendingDeleted.clear();
     void this.sqliteStore?.close();
   }
 

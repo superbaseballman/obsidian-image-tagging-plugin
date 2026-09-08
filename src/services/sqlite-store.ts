@@ -44,7 +44,15 @@ export class SqliteStore {
       let normalized = item;
       const existing = uniqueItems.get(item.id);
       if (existing && existing.path !== item.path) {
-        normalized = { ...item, id: `${item.id}-${this.hashPath(item.path)}` };
+        // 与 ImageDataManager 保持一致的稳定序号分配（md5-2、md5-3 …），
+        // 避免 id 依赖路径导致纯改名后记录 id 漂移
+        let index = 2;
+        let candidate = `${item.id}-${index}`;
+        while (uniqueItems.has(candidate)) {
+          index += 1;
+          candidate = `${item.id}-${index}`;
+        }
+        normalized = { ...item, id: candidate };
       }
       uniqueItems.set(normalized.id, normalized);
     }
@@ -123,12 +131,4 @@ export class SqliteStore {
     return value === 'video' || value === 'audio' ? value : 'image';
   }
 
-  private hashPath(path: string): string {
-    let hash = 2166136261;
-    for (let index = 0; index < path.length; index++) {
-      hash ^= path.charCodeAt(index);
-      hash = Math.imul(hash, 16777619);
-    }
-    return (hash >>> 0).toString(16);
-  }
 }

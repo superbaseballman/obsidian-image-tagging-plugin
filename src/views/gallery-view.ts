@@ -1,6 +1,7 @@
 import { ItemView, WorkspaceLeaf, Notice, TFile, App, Modal } from 'obsidian';
 import { MediaData, ImageTaggingSettings, ImageDataManager, getMediaType } from '../models/image-data-model';
 import { getImageResolutionWithCache, getImageTaggingPlugin, getSafeImagePath, preloadImageInfo, getMediaDurationWithCache } from '../utils/utils';
+import { getFileMd5 } from '../utils/file-hash';
 import { Logger } from '../utils/logger';
 import { GALLERY_VIEW_TYPE, CSS_CLASSES } from '../constants';
 
@@ -405,11 +406,12 @@ export class GalleryView extends ItemView {
     const imageDataManager = plugin.imageDataManager;
     this.imageDataManager = imageDataManager;
 
-    // 清理无效媒体数据（删除不存在的或不在指定扫描路径内的媒体记录）
-    const removedData = imageDataManager.cleanupInvalidImages(this.app, this.settings.scanFolderPath, this.settings.scanMultipleFolderPaths);
-    
-    // 刷新媒体数据（根据设置扫描媒体）
+    // 先扫描：让改名 / 移动后的新文件按内容 MD5 继承残留记录（id / 标签 / 描述），
+    // 再清理真正失效的记录，避免“先删后建”导致原标签丢失。
     await this.scanImagesBasedOnSettings();
+
+    // 清理无效媒体数据（删除仍不存在或不在指定扫描路径内的媒体记录）
+    const removedData = imageDataManager.cleanupInvalidImages(this.app, this.settings.scanFolderPath, this.settings.scanMultipleFolderPaths);
 
     // 确保在扫描后再次使用插件实例的数据管理器
     this.imageDataManager = plugin.imageDataManager;
@@ -479,6 +481,7 @@ export class GalleryView extends ItemView {
     }
 
     let mediaCount = 0;
+    let inheritedCount = 0;
 
     // 获取当前支持的媒体格式
     const supportedFormats = this.settings.supportedFormats || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'mp4', 'avi', 'mov', 'mkv', 'webm', 'mp3', 'wav', 'flac', 'aac', 'ogg'];
@@ -488,18 +491,38 @@ export class GalleryView extends ItemView {
       if (supportedFormats.includes(file.extension.toLowerCase())) {
         const existingData = imageDataManager.getImageDataByPath(file.path);
         if (!existingData) {
-          // 如果不存在，则创建默认数据
-          const newData = await this.createImageDataFromFile(file);
+          // 若存在「内容相同(MD5 一致)但原路径文件已不存在」的残留记录（改名 / 移动产生），
+          // 直接继承其 id / 标签 / 标题 / 描述，避免标签数据丢失。
+          const contentMd5 = await getFileMd5(file, this.app);
+          const orphan = imageDataManager.getImageDataByContentId(contentMd5);
+          const orphanFile = orphan ? this.app.vault.getAbstractFileByPath(orphan.path) : null;
+          if (orphan && !(orphanFile instanceof TFile)) {
+            const stat = file.stat;
+            const adopted = imageDataManager.renamePath(orphan.path, file.path);
+            if (adopted) {
+              adopted.title = file.basename;
+              adopted.originalName = file.name;
+              adopted.lastModified = stat.mtime;
+              adopted.fileSize = stat.size;
+              adopted.size = this.formatFileSize(stat.size);
+              inheritedCount++;
+              continue;
+            }
+          }
+
+          // 不存在可继承的记录，才创建默认数据（id = 内容 MD5）
+          const newData = await this.createImageDataFromFile(file, contentMd5);
           imageDataManager.addImageData(newData);
           mediaCount++;
         }
       }
     }
 
-    if (mediaCount > 0) {
+    if (mediaCount > 0 || inheritedCount > 0) {
       // 直接使用插件实例保存数据，确保数据一致性
       await plugin.saveDataToFile();
-      new Notice(`扫描完成！新增了 ${mediaCount} 个媒体记录`);
+      const inheritedText = inheritedCount > 0 ? `，按内容继承了 ${inheritedCount} 条原记录` : '';
+      new Notice(`扫描完成！新增了 ${mediaCount} 个媒体记录${inheritedText}`);
     } else {
       new Notice('扫描完成！没有发现新的媒体文件');
     }
@@ -544,8 +567,9 @@ export class GalleryView extends ItemView {
   }
 
 private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaData> {
-    // 如果没有提供ID，则生成一个新的ID
-    const imageId = id || this.generateId();
+    // 若未显式指定 ID，则以文件内容 MD5 作为记录 ID：
+    // 保证记录 ID 只由文件内容决定，改名 / 移动不会导致 ID 变化
+    const imageId = id || await getFileMd5(file, this.app);
     
     // 获取文件信息
     const stat = file.stat;
@@ -612,10 +636,6 @@ private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaDa
     return imageData;
   }
 
-  private generateId(): string {
-    // 生成一个唯一的ID
-    return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
-  }
 
   private formatFileSize(bytes: number): string {
     if (bytes === 0) return '0 Bytes';

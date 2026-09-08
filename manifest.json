@@ -1,7 +1,7 @@
 {
   "id": "image-tagging-obsidian",
   "name": "Image Tagging",
-  "version": "2.2.3",
+  "version": "2.2.4",
   "minAppVersion": "0.15.0",
   "description": "为 Obsidian 中的媒体附件添加标签管理功能，使用 SQLite 存储并以文件 MD5 作为记录标识。",
   "author": "superbasballman",
