@@ -41,20 +41,14 @@ export class SqliteStore {
     const database = await this.open();
     const uniqueItems = new Map<string, MediaData>();
     for (const item of items) {
-      let normalized = item;
       const existing = uniqueItems.get(item.id);
       if (existing && existing.path !== item.path) {
-        // 与 ImageDataManager 保持一致的稳定序号分配（md5-2、md5-3 …），
-        // 避免 id 依赖路径导致纯改名后记录 id 漂移
-        let index = 2;
-        let candidate = `${item.id}-${index}`;
-        while (uniqueItems.has(candidate)) {
-          index += 1;
-          candidate = `${item.id}-${index}`;
-        }
-        normalized = { ...item, id: candidate };
+        // 同内容重复记录（id 相同、路径不同）：管理器已合并为单条，此处仅做防御。
+        // 合并标签并保留先出现的记录，不再生成 md5-2 派生 id。
+        existing.tags = Array.from(new Set([...existing.tags, ...item.tags]));
+        continue;
       }
-      uniqueItems.set(normalized.id, normalized);
+      uniqueItems.set(item.id, { ...item });
     }
 
     database.run('BEGIN TRANSACTION');

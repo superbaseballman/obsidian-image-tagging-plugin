@@ -82,6 +82,7 @@ export interface ImageTaggingPlugin {
   saveDataToFile(): Promise<void>;
   loadDataFromFile(): Promise<void>;
   saveSettings(): Promise<void>;
+  ensureImageDataForFile(file: TFile): Promise<MediaData | undefined>;
 }
 
 // 获取插件实例

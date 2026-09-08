@@ -379,6 +379,12 @@ export class GalleryView extends ItemView {
   }
 
   private async refreshGallery() {
+    // 等待插件数据就绪，避免在数据尚未从存储加载完成时扫描，导致误建空记录覆盖旧数据
+    const readyPlugin = getImageTaggingPlugin(this.app);
+    if (readyPlugin?.dataReady) {
+      await readyPlugin.dataReady;
+    }
+
     // 尝试多次获取插件实例，因为有时可能由于加载时机问题无法立即获取
     let plugin = getImageTaggingPlugin(this.app);
     
@@ -481,7 +487,6 @@ export class GalleryView extends ItemView {
     }
 
     let mediaCount = 0;
-    let inheritedCount = 0;
 
     // 获取当前支持的媒体格式
     const supportedFormats = this.settings.supportedFormats || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'mp4', 'avi', 'mov', 'mkv', 'webm', 'mp3', 'wav', 'flac', 'aac', 'ogg'];
@@ -491,38 +496,20 @@ export class GalleryView extends ItemView {
       if (supportedFormats.includes(file.extension.toLowerCase())) {
         const existingData = imageDataManager.getImageDataByPath(file.path);
         if (!existingData) {
-          // 若存在「内容相同(MD5 一致)但原路径文件已不存在」的残留记录（改名 / 移动产生），
-          // 直接继承其 id / 标签 / 标题 / 描述，避免标签数据丢失。
-          const contentMd5 = await getFileMd5(file, this.app);
-          const orphan = imageDataManager.getImageDataByContentId(contentMd5);
-          const orphanFile = orphan ? this.app.vault.getAbstractFileByPath(orphan.path) : null;
-          if (orphan && !(orphanFile instanceof TFile)) {
-            const stat = file.stat;
-            const adopted = imageDataManager.renamePath(orphan.path, file.path);
-            if (adopted) {
-              adopted.title = file.basename;
-              adopted.originalName = file.name;
-              adopted.lastModified = stat.mtime;
-              adopted.fileSize = stat.size;
-              adopted.size = this.formatFileSize(stat.size);
-              inheritedCount++;
-              continue;
-            }
+          // 交由插件统一逻辑处理：新建（id=内容 MD5）或按内容继承改名/移动后的原记录；
+          // 若同内容已有其它现存文件登记则视为重复拷贝不建记录 —— 同内容数据直接合并。
+          const ensured = await plugin.ensureImageDataForFile(file);
+          if (ensured) {
+            mediaCount++;
           }
-
-          // 不存在可继承的记录，才创建默认数据（id = 内容 MD5）
-          const newData = await this.createImageDataFromFile(file, contentMd5);
-          imageDataManager.addImageData(newData);
-          mediaCount++;
         }
       }
     }
 
-    if (mediaCount > 0 || inheritedCount > 0) {
+    if (mediaCount > 0) {
       // 直接使用插件实例保存数据，确保数据一致性
       await plugin.saveDataToFile();
-      const inheritedText = inheritedCount > 0 ? `，按内容继承了 ${inheritedCount} 条原记录` : '';
-      new Notice(`扫描完成！新增了 ${mediaCount} 个媒体记录${inheritedText}`);
+      new Notice(`扫描完成！新增了 ${mediaCount} 个媒体记录`);
     } else {
       new Notice('扫描完成！没有发现新的媒体文件');
     }

@@ -117,11 +117,13 @@ export class ImageDataManager {
       this.pathToIdMap.delete(mediaData.path);
     }
 
-    // id（内容 MD5）已被其它路径的记录占用：说明存在多份内容相同的拷贝。
-    // 保留已有记录不动，为新记录分配稳定的序号后缀（不依赖路径，纯改名不会导致 id 漂移）。
+    // 同内容（同 MD5）已在其它路径存在记录：同一内容只保留一条记录。
+    // 直接合并标签到已有记录，不再生成 md5-2 / md5-3 派生 id，保证“同内容数据合并”。
     const existingData = this.data.get(mediaData.id);
     if (existingData && existingData.path !== mediaData.path) {
-      mediaData = { ...mediaData, id: this.allocateCollisionId(mediaData.id) };
+      existingData.tags = Array.from(new Set([...(existingData.tags || []), ...(mediaData.tags || [])]));
+      this.updateRecentTags(existingData.tags);
+      return;
     }
 
     this.data.set(mediaData.id, mediaData);
@@ -129,16 +131,6 @@ export class ImageDataManager {
     
     // 更新最近使用的标签
     this.updateRecentTags(mediaData.tags);
-  }
-
-  // 为相同内容（相同 MD5）的多份拷贝分配稳定的序号后缀：md5-2、md5-3 …
-  // 不再使用路径哈希，避免纯改名/移动导致记录 id 变化。
-  private allocateCollisionId(baseId: string): string {
-    let index = 2;
-    while (this.data.has(`${baseId}-${index}`)) {
-      index += 1;
-    }
-    return `${baseId}-${index}`;
   }
 
   /**
@@ -183,6 +175,80 @@ export class ImageDataManager {
       this.pathToIdMap.delete(mediaData.path); // 同时删除路径映射
     }
     return this.data.delete(id);
+  }
+
+  /**
+   * 规整历史遗留的「同内容派生记录」（id 形如 md5-<后缀>），让同一内容最终只保留一条
+   * 记录且 id 就是内容 MD5：
+   * 1) 派生记录与基础 md5 记录并存 → 派生记录并入基础记录（标签取并集）；
+   * 2) 仅剩派生记录（基础已被删除）→ 按内容分组，保留一条（优先文件仍存在者）并规整 id 为基础 md5。
+   * @param exists 判断某路径的文件是否仍然存在
+   * @returns 被合并移除的记录数
+   */
+  mergeDerivedContentRecords(exists: (path: string) => boolean): number {
+    const baseOf = (id: string): string | undefined => {
+      const m = /^([0-9a-f]{32})-.+$/.exec(id);
+      return m ? m[1] : undefined;
+    };
+    let merged = 0;
+
+    // 第一遍：基础 md5 记录与派生记录并存 → 派生并入基础，删除派生记录
+    for (const derivedId of Array.from(this.data.keys())) {
+      const baseId = baseOf(derivedId);
+      if (!baseId) continue;
+      const base = this.data.get(baseId);
+      const derived = this.data.get(derivedId);
+      if (!base || !derived || base.path === derived.path) continue;
+
+      base.tags = Array.from(new Set([...base.tags, ...derived.tags]));
+      if (!exists(base.path) && exists(derived.path)) {
+        // 基础记录对应的文件已不存在，而派生记录的文件仍在 → 记录改指向该文件
+        this.pathToIdMap.delete(base.path);
+        base.path = derived.path;
+        this.pathToIdMap.set(base.path, baseId);
+      }
+      this.pathToIdMap.delete(derived.path);
+      this.data.delete(derivedId);
+      this.updateRecentTags(base.tags);
+      merged++;
+    }
+
+    // 第二遍：仅剩派生记录（基础 md5 记录已不存在）→ 分组后保留一条并规整 id
+    const groups = new Map<string, MediaData[]>();
+    for (const [id, record] of this.data) {
+      const baseId = baseOf(id);
+      if (baseId) {
+        const list = groups.get(baseId);
+        if (list) list.push({ ...record, id });
+        else groups.set(baseId, [{ ...record, id }]);
+      }
+    }
+    for (const [baseId, list] of groups) {
+      if (list.length === 0) continue;
+      // 尽量选择文件仍存在的记录作为保留对象
+      let kept = list[0];
+      for (const candidate of list) {
+        if (exists(candidate.path)) {
+          kept = candidate;
+          break;
+        }
+      }
+      for (const record of list) {
+        if (record.id === kept.id) continue;
+        kept.tags = Array.from(new Set([...kept.tags, ...record.tags]));
+        this.pathToIdMap.delete(record.path);
+        this.data.delete(record.id);
+        merged++;
+      }
+      if (kept.id !== baseId) {
+        this.data.delete(kept.id);
+        kept.id = baseId;
+        this.data.set(baseId, kept);
+        this.pathToIdMap.set(kept.path, baseId);
+      }
+      this.updateRecentTags(kept.tags);
+    }
+    return merged;
   }
   
   // 根据路径获取媒体数据
