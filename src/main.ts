@@ -4,8 +4,10 @@ import { DataMigration } from './services/data-migration';
 import { ImageView } from './views/image-info-view';
 import { GalleryView } from './views/gallery-view';
 import { getImageResolutionWithCache, getImageFileFromPath, getMediaDurationWithCache } from './utils/utils';
+import { getFileMd5 } from './utils/file-hash';
+import { SqliteStore } from './services/sqlite-store';
 import { Logger, LogLevel } from './utils/logger';
-import { GALLERY_VIEW_TYPE, IMAGE_INFO_VIEW_TYPE, DEFAULT_JSON_STORAGE_PATH, DEFAULT_SUPPORTED_FORMATS, DEFAULT_CATEGORIES } from './constants';
+import { GALLERY_VIEW_TYPE, IMAGE_INFO_VIEW_TYPE, DEFAULT_JSON_STORAGE_PATH, DEFAULT_SUPPORTED_FORMATS, DEFAULT_CATEGORIES, SQLITE_STORAGE_PATH } from './constants';
 
 // 导入样式
 import '../styles.css';
@@ -18,16 +20,19 @@ export default class ImageTaggingPlugin extends Plugin {
   settings: ImageTaggingSettings;
   imageDataManager: ImageDataManager;
   dataReady: Promise<void>;
+  private sqliteStore: SqliteStore;
+  private saveQueue: Promise<void> = Promise.resolve();
 
   async onload() {
     await this.loadSettings();
-    this.imageDataManager = new ImageDataManager();
+    this.imageDataManager = new ImageDataManager(this.settings.recentTags);
+    this.sqliteStore = new SqliteStore(this.app, SQLITE_STORAGE_PATH);
 
     // 恢复布局中的视图可能在此回调完成前打开，先暴露数据就绪状态，避免视图扫描空数据并覆盖已有文件。
     this.dataReady = new Promise<void>((resolve) => {
       this.app.workspace.onLayoutReady(async () => {
-        await this.loadDataFromFile();
-        await this.autoMigrateLegacyData();
+          await this.loadDataFromFile();
+          await this.autoMigrateLegacyData();
         resolve();
       });
     });
@@ -407,12 +412,9 @@ this.registerEvent(
       const file = await this.getImageInfoFromPath(imagePath, activeFile);
       
       if (file && this.isSupportedImageFile(file)) {
-        let imageData = this.imageDataManager.getImageDataByPath(file.path);
-        
-        if (!imageData) {
-          // 如果不存在，则创建默认数据
-          imageData = await this.createDefaultImageData(file);
-          this.imageDataManager.addImageData(imageData);
+        const existing = this.imageDataManager.getImageDataByPath(file.path);
+        const imageData = await this.ensureImageDataForFile(file);
+        if (!existing || existing.id !== imageData.id) {
           newImagesCount++;
         }
       }
@@ -473,7 +475,7 @@ this.registerEvent(
     }
     
     return {
-      id: `media_${Date.now()}_${path}`,
+      id: await getFileMd5(file, this.app),
       path: path,
       title: name,
       tags: tags,
@@ -489,6 +491,22 @@ this.registerEvent(
       fileSize: stat.size,
       type: mediaType
     };
+  }
+
+  private async ensureImageDataForFile(file: TFile): Promise<MediaData> {
+    const existing = this.imageDataManager.getImageDataByPath(file.path);
+    const currentId = await getFileMd5(file, this.app);
+    if (!existing) {
+      const created = await this.createDefaultImageData(file);
+      this.imageDataManager.addImageData(created);
+      return this.imageDataManager.getImageDataByPath(file.path) || created;
+    }
+    if (existing.id === currentId) return existing;
+
+    this.imageDataManager.removeImageData(existing.id);
+    const updated: MediaData = { ...existing, id: currentId, path: file.path };
+    this.imageDataManager.addImageData(updated);
+    return this.imageDataManager.getImageDataByPath(file.path) || updated;
   }
 
   /**
@@ -577,74 +595,17 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 }
 
   onunload() {
-    // 清理视图
     this.app.workspace.detachLeavesOfType(GALLERY_VIEW_TYPE);
     this.app.workspace.detachLeavesOfType(IMAGE_INFO_VIEW_TYPE);
-}
-
-  async loadSettings() {
-
-    // 加载保存的设置，如果不存在则使用默认设置
-
-    const loadedData = await this.loadData();
-
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
-
-    
-
-    // 确保jsonStoragePath不为空
-
-    if (!this.settings.jsonStoragePath) {
-
-      this.settings.jsonStoragePath = DEFAULT_SETTINGS.jsonStoragePath;
-
-    }
-
+    void this.sqliteStore?.close();
   }
 
-
-
-  /**
-
-   * 确保文件路径的目录存在，如果不存在则创建
-
-   * @param filePath 文件路径
-
-   */
-
-  async ensureDirectoryExists(filePath: string) {
-
-    const dirPath = filePath.substring(0, filePath.lastIndexOf('/'));
-
-    if (dirPath && !(await this.app.vault.adapter.exists(dirPath))) {
-
-      // 递归创建目录
-
-      const pathParts = dirPath.split('/');
-
-      let currentPath = '';
-
-      
-
-      for (const part of pathParts) {
-
-        if (part) {  // 跳过空字符串（如路径开头的斜杠）
-
-          currentPath += (currentPath ? '/' : '') + part;
-
-          if (!(await this.app.vault.adapter.exists(currentPath))) {
-
-                      await this.app.vault.adapter.mkdir(currentPath);
-            
-                      Logger.debug(`创建目录: ${currentPath}`);
-          }
-
-        }
-
-      }
-
+  async loadSettings() {
+    const loadedData = await this.loadData();
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
+    if (!this.settings.jsonStoragePath) {
+      this.settings.jsonStoragePath = DEFAULT_SETTINGS.jsonStoragePath;
     }
-
   }
 
   async saveSettings() {
@@ -652,63 +613,50 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
   }
 
   async loadDataFromFile() {
-
     try {
+      const jsonPaths = [this.settings.jsonStoragePath, '.obsidian/image-tag.json', 'image-tag.json', '旧版本image-tag.json']
+        .filter((path, index, paths) => path && paths.indexOf(path) === index);
+      const sourcePath = await this.findExistingPath(jsonPaths);
 
-      // 确保路径有效且不为空
-
-      if (!this.settings.jsonStoragePath || this.settings.jsonStoragePath.trim() === '') {
-
-        this.settings.jsonStoragePath = DEFAULT_SETTINGS.jsonStoragePath;
-
-        Logger.warn('JSON存储路径为空，使用默认路径:', this.settings.jsonStoragePath);
-
+      const sqliteRecords = await this.sqliteStore.load();
+      if (sqliteRecords.length > 0 || !sourcePath) {
+        this.imageDataManager.importRecords(sqliteRecords);
+        Logger.info('SQLite 媒体标签数据加载成功:', SQLITE_STORAGE_PATH);
+        return;
       }
 
-
-
-      if (await this.app.vault.adapter.exists(this.settings.jsonStoragePath)) {
-
-        const jsonData = await this.app.vault.adapter.read(this.settings.jsonStoragePath);
-
-        this.imageDataManager.importFromJSON(jsonData);
-
-        // 静默加载成功：仅记录日志，不打扰用户
-        Logger.info('图片标签数据加载成功:', this.settings.jsonStoragePath);
+      if (sourcePath) {
+        const jsonData = await this.app.vault.adapter.read(sourcePath);
+        const records = await DataMigration.loadDataWithMigrationForApp(jsonData, this.app);
+        this.imageDataManager.importRecords(records);
+        await this.sqliteStore.save(this.imageDataManager.getAllImageData());
+        await this.app.vault.adapter.remove(sourcePath);
+        Logger.info(`JSON 数据已迁移至 SQLite 并删除来源文件: ${sourcePath}`);
       } else {
-
-        Logger.info('JSON数据文件不存在，将创建新文件:', this.settings.jsonStoragePath);
-
-        // 确保目录存在
-
-        await this.ensureDirectoryExists(this.settings.jsonStoragePath);
-
-        // 文件不存在时，初始化空数据
-
-        this.imageDataManager = new ImageDataManager();
-
+        this.imageDataManager.importRecords([]);
+        await this.sqliteStore.save([]);
       }
-
     } catch (error) {
-
-      Logger.error('加载图片标签数据失败:', error);
-
-      Logger.error('尝试加载的路径:', this.settings.jsonStoragePath);
-
-      new Notice('加载图片标签数据失败，已初始化空数据。');
-
-      // 初始化空数据
-
-      this.imageDataManager = new ImageDataManager();
-
+      Logger.error('加载 SQLite 媒体标签数据失败:', error);
+      new Notice('加载媒体标签数据失败，已初始化空数据。');
+      this.imageDataManager.importRecords([]);
     }
+  }
 
+  private async findExistingPath(paths: string[]): Promise<string | null> {
+    for (const path of paths) {
+      if (await this.app.vault.adapter.exists(path)) return path;
+    }
+    return null;
   }
 
   /**
    * 自动检测并迁移旧版本数据文件（如果当前数据为空且存在旧版本文件）
    */
   async autoMigrateLegacyData() {
+    // JSON 到 SQLite 的迁移已在 loadDataFromFile 中完成，保留入口以兼容旧命令。
+    return;
+    /*
     try {
       // 检查当前数据是否为空
       const currentData = this.imageDataManager.getAllImageData();
@@ -743,6 +691,7 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
       Logger.warn('自动检测旧版本数据时发生错误:', error);
       // 静默处理错误，不影响插件正常加载
     }
+    */
   }
 
   /**
@@ -750,59 +699,12 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
    */
   async migrateLegacyData() {
     try {
-      new Notice('开始迁移旧版本数据...');
-      
-      // 定义可能的旧版本数据文件路径
-      const legacyFilePaths = [
-        '.obsidian/image-tag.json',  // 常见的旧版本路径
-        'image-tag.json',           // 可能的相对路径
-        this.settings.jsonStoragePath.replace('.json', '_old.json'), // 用户可能重命名的旧文件
-        '旧版本image-tag.json'      // 根据用户提供的文件名
-      ];
-      
-      let migrationSuccess = false;
-      
-      // 尝试从每个可能的路径迁移
-      for (const legacyPath of legacyFilePaths) {
-        if (await this.app.vault.adapter.exists(legacyPath)) {
-          Logger.info(`发现旧版本数据文件: ${legacyPath}`);
-          
-          // 使用数据迁移工具迁移数据
-          const success = await DataMigration.migrateLegacyFile(this.app, legacyPath);
-          
-          if (success) {
-            // 重新加载数据以确保更新
-            await this.loadDataFromFile();
-            new Notice(`成功从 ${legacyPath} 迁移数据！`);
-            migrationSuccess = true;
-            break;
-          }
-        }
+      if (await this.app.vault.adapter.exists(SQLITE_STORAGE_PATH)) {
+        new Notice('SQLite 数据已存在，无需迁移。');
+        return;
       }
-      
-      if (!migrationSuccess) {
-        // 如果没有找到已知路径的旧文件，提示用户手动指定路径
-        new Notice('未找到已知路径的旧版本数据文件，请确保旧文件存在后再试。');
-        
-        // 作为备选方案，尝试读取旧版本文件
-        const possibleLegacyPath = '旧版本image-tag.json';
-        if (await this.app.vault.adapter.exists(possibleLegacyPath)) {
-          const success = await DataMigration.migrateLegacyFile(this.app, possibleLegacyPath);
-          if (success) {
-            await this.loadDataFromFile();
-            new Notice(`成功从 ${possibleLegacyPath} 迁移数据！`);
-            migrationSuccess = true;
-          }
-        }
-      }
-      
-      if (migrationSuccess) {
-        // 保存迁移后的数据到当前配置的路径
-        await this.saveDataToFile();
-        new Notice('数据迁移完成！旧版本数据已成功转换为新格式。');
-      } else {
-        new Notice('未找到可迁移的旧版本数据文件。');
-      }
+      await this.loadDataFromFile();
+      new Notice('旧 JSON 数据迁移完成。');
     } catch (error) {
       Logger.error('迁移旧版本数据失败:', error);
       new Notice('迁移旧版本数据时发生错误，请查看控制台了解详细信息。');
@@ -810,48 +712,16 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
   }
 
   async saveDataToFile() {
-
-    try {
-
-      // 确保路径有效且不为空
-
-      if (!this.settings.jsonStoragePath || this.settings.jsonStoragePath.trim() === '') {
-
-        this.settings.jsonStoragePath = DEFAULT_SETTINGS.jsonStoragePath;
-
-        Logger.warn('JSON存储路径为空，使用默认路径:', this.settings.jsonStoragePath);
-
-        await this.saveSettings(); // 保存修正后的设置
-
+    this.saveQueue = this.saveQueue.then(async () => {
+      try {
+        await this.sqliteStore.save(this.imageDataManager.getAllImageData());
+        Logger.info('SQLite 媒体标签数据保存成功:', SQLITE_STORAGE_PATH);
+      } catch (error) {
+        Logger.error('保存 SQLite 媒体标签数据失败:', error);
+        new Notice('保存媒体标签数据失败');
       }
-
-
-
-      // 确保目录存在
-
-      await this.ensureDirectoryExists(this.settings.jsonStoragePath);
-
-
-
-      const jsonData = this.imageDataManager.exportToJSON();
-
-      // 使用 Vault.write 代替 adapter.write 以便更好地兼容 Obsidian 环境
-
-      await this.app.vault.adapter.write(this.settings.jsonStoragePath, jsonData); 
-
-      // 注意：使用 adapter.write 避免了触发文件事件，是存储插件私有数据的好方法
-
-      Logger.info('图片标签数据保存成功:', this.settings.jsonStoragePath);
-
-    } catch (error) {
-
-      Logger.error('保存图片标签数据失败:', error);
-
-      Logger.error('尝试保存的路径:', this.settings.jsonStoragePath);
-
-      new Notice('保存图片标签数据失败');
-
-    }
+    });
+    await this.saveQueue;
 
   }
 
@@ -913,7 +783,7 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
       // 检查哪些文件还没有数据记录
 
-      const filesToProcess = supportedFiles.filter(file => !this.imageDataManager.getImageDataByPath(file.path));
+      const filesToProcess = supportedFiles;
 
   
 
@@ -935,11 +805,10 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
         const batchPromises = batch.map(async file => {
 
-          const mediaData = await this.createDefaultImageData(file);
+          const existing = this.imageDataManager.getImageDataByPath(file.path);
+          const mediaData = await this.ensureImageDataForFile(file);
 
-          this.imageDataManager.addImageData(mediaData);
-
-          return mediaData;
+          return { mediaData, changed: !existing || existing.id !== mediaData.id };
 
         });
 
@@ -947,7 +816,7 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
         await Promise.all(batchPromises);
 
-        mediaCount += batch.length;
+        mediaCount += (await Promise.all(batchPromises)).filter(result => result.changed).length;
 
   
 
@@ -1198,8 +1067,8 @@ class ImageTaggingSettingTab extends PluginSettingTab {
     containerEl.empty();
 
     new Setting(containerEl)
-      .setName('JSON 存储路径')
-      .setDesc('用于存储图片标签数据的 JSON 文件路径')
+      .setName('旧 JSON 数据路径')
+      .setDesc('仅用于首次迁移旧版本数据；当前数据存储在 .obsidian/image-tags.db')
       .addText(text => text
         .setPlaceholder('.obsidian/image-tags.json')
         .setValue(this.plugin.settings.jsonStoragePath)
@@ -1222,6 +1091,8 @@ class ImageTaggingSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         }));
 
+    let autoTagValueSetting: Setting;
+
     new Setting(containerEl)
 
       .setName('导入时自动添加标签')
@@ -1235,15 +1106,18 @@ class ImageTaggingSettingTab extends PluginSettingTab {
         .onChange(async (value) => {
 
           this.plugin.settings.autoTagOnImport = value;
+          autoTagValueSetting.settingEl.toggle(value);
 
           await this.plugin.saveSettings();
 
         }));
 
 
-    new Setting(containerEl)
+    autoTagValueSetting = new Setting(containerEl)
 
       .setName('导入时自动添加的标签')
+
+      .setClass('subsetting')
 
       .setDesc('当启用自动添加标签时，为新图片添加的默认标签（多个标签用逗号分隔）')
 
@@ -1260,6 +1134,8 @@ class ImageTaggingSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
 
         }));
+
+    autoTagValueSetting.settingEl.toggle(this.plugin.settings.autoTagOnImport);
 
 
 

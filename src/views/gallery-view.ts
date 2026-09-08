@@ -16,7 +16,7 @@ export class GalleryView extends ItemView {
 
 
 
-  currentCategory: string = '全部图片';
+  currentCategory: string = '全部媒体';
 
 
 
@@ -50,7 +50,7 @@ export class GalleryView extends ItemView {
     this.imageDataManager = imageDataManager;
     
     // 从设置中加载分类导航
-    this.categories = [...(settings.categories || ['全部图片', '风景', '人物', '建筑', '美食', '植物', '动物', '艺术'])];
+    this.categories = [...(settings.categories || ['全部媒体', '风景', '人物', '建筑', '美食', '植物', '动物', '艺术'])];
   }
 
   getViewType(): string {
@@ -151,7 +151,7 @@ export class GalleryView extends ItemView {
 
     this.categories.forEach((category, index) => {
 
-      const li = this.createCategoryElement(categoriesList, category, category === '全部图片');
+      const li = this.createCategoryElement(categoriesList, category, category === '全部媒体');
 
       li.addEventListener('click', () => {
 
@@ -233,8 +233,8 @@ export class GalleryView extends ItemView {
     const statsContainer = statsSection.createEl('div', { cls: 'stats-grid' });
     
     statsContainer.createEl('div', { cls: 'stat-item' }).innerHTML = `
-      <div class="stat-value" id="total-images">0</div>
-      <div class="stat-label">总图片数</div>
+      <div class="stat-value" id="total-media">0</div>
+      <div class="stat-label">总媒体数</div>
     `;
     
     statsContainer.createEl('div', { cls: 'stat-item' }).innerHTML = `
@@ -645,7 +645,7 @@ private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaDa
     images = images.filter(image => image.path);
     
     // 应用分类过滤
-    if (this.currentCategory && this.currentCategory !== '全部图片') {
+    if (this.currentCategory && this.currentCategory !== '全部媒体') {
       images = images.filter(image => 
         image.tags.includes(this.currentCategory) || 
         image.title.includes(this.currentCategory)
@@ -984,15 +984,15 @@ private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaDa
     });
     const totalTags = allTags.size;
     
-    // 计算分类总数（排除"全部图片"分类）
-    const totalCategories = this.categories.filter(cat => cat !== '全部图片').length;
+    // 计算分类总数（排除"全部媒体"分类）
+    const totalCategories = this.categories.filter(cat => cat !== '全部媒体').length;
     
     // 更新统计显示
-    const totalImagesEl = this.containerEl.querySelector('#total-images');
+    const totalMediaEl = this.containerEl.querySelector('#total-media');
     const totalTagsEl = this.containerEl.querySelector('#total-tags');
     const totalCategoriesEl = this.containerEl.querySelector('#total-categories-stat');
     
-    if (totalImagesEl) totalImagesEl.setText(totalImages.toString());
+    if (totalMediaEl) totalMediaEl.setText(totalImages.toString());
     if (totalTagsEl) totalTagsEl.setText(totalTags.toString());
     if (totalCategoriesEl) totalCategoriesEl.setText(totalCategories.toString());
   }
@@ -1529,9 +1529,9 @@ private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaDa
 
     
 
-    // 为"全部图片"以外的分类添加删除按钮
+    // 为"全部媒体"以外的分类添加删除按钮
 
-    if (category !== '全部图片') {
+    if (category !== '全部媒体') {
 
       const deleteBtn = li.createEl('span', {
 
@@ -1605,15 +1605,15 @@ private async createImageDataFromFile(file: TFile, id?: string): Promise<MediaDa
       // 保存分类到插件设置
       this.saveCategories();
       
-      // 如果当前分类被删除，切换到"全部图片"
+      // 如果当前分类被删除，切换到"全部媒体"
       if (this.currentCategory === category) {
-        this.currentCategory = '全部图片';
-        // 重新激活"全部图片"项
+        this.currentCategory = '全部媒体';
+        // 重新激活"全部媒体"项
         categoriesList.querySelectorAll('.category-item').forEach(item => {
           item.removeClass('active');
         });
         const allImagesItem = Array.from(categoriesList.querySelectorAll('.category-item'))
-          .find(item => item.getText() === '全部图片');
+          .find(item => item.getText() === '全部媒体');
         if (allImagesItem) {
           allImagesItem.addClass('active');
         }

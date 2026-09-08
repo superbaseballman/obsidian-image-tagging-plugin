@@ -2,6 +2,7 @@ import { MediaData } from '../models/image-data-model';
 import { getMediaType } from '../models/image-data-model';
 import { TFile, App } from 'obsidian';
 import { Logger } from '../utils/logger';
+import { getFileMd5 } from '../utils/file-hash';
 
 /**
  * 数据迁移接口 - 用于处理旧版本数据格式
@@ -109,6 +110,17 @@ export class DataMigration {
       Logger.error('解析 JSON 数据失败:', error);
       throw error;
     }
+  }
+
+  static async loadDataWithMigrationForApp(jsonData: string, app: App): Promise<MediaData[]> {
+    const records = this.loadDataWithMigration(jsonData);
+    const migrated: MediaData[] = [];
+    for (const record of records) {
+      const file = app.vault.getAbstractFileByPath(record.path);
+      const md5 = file instanceof TFile ? await getFileMd5(file, app) : record.id;
+      migrated.push({ ...record, id: md5 });
+    }
+    return migrated;
   }
 
   /**

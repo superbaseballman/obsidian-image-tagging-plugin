@@ -13,6 +13,7 @@ export const MAX_CONCURRENT_PRELOAD = 5;
 
 // 默认设置相关常量
 export const DEFAULT_JSON_STORAGE_PATH = '.obsidian/image-tags.json';
+export const SQLITE_STORAGE_PATH = '.obsidian/image-tags.db';
 export const DEFAULT_SUPPORTED_FORMATS = [
   'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp',
   'mp4', 'avi', 'mov', 'mkv', 'webm',

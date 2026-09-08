@@ -110,10 +110,16 @@ export class ImageDataManager {
   
   // 添加或更新媒体数据
   addImageData(mediaData: MediaData): void {
+    const pathOwner = this.pathToIdMap.get(mediaData.path);
+    if (pathOwner && pathOwner !== mediaData.id) {
+      this.data.delete(pathOwner);
+    }
+
     // 如果之前存在相同路径的数据，先删除旧的路径映射
     const existingData = this.data.get(mediaData.id);
     if (existingData && existingData.path !== mediaData.path) {
       this.pathToIdMap.delete(existingData.path);
+      mediaData = { ...mediaData, id: this.createCollisionId(mediaData.id, mediaData.path) };
     }
     
     this.data.set(mediaData.id, mediaData);
@@ -121,6 +127,15 @@ export class ImageDataManager {
     
     // 更新最近使用的标签
     this.updateRecentTags(mediaData.tags);
+  }
+
+  private createCollisionId(id: string, path: string): string {
+    let hash = 2166136261;
+    for (let index = 0; index < path.length; index++) {
+      hash ^= path.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return `${id}-${(hash >>> 0).toString(16)}`;
   }
   
   // 获取媒体数据
@@ -208,21 +223,23 @@ export class ImageDataManager {
       const parsed = DataMigration.loadDataWithMigration(jsonData);
       
       if (Array.isArray(parsed)) {
-        this.data.clear();
-        this.pathToIdMap.clear(); // 清空路径映射
-        for (const item of parsed) {
-          // 验证数据结构
-          if (this.isValidImageData(item)) {
-            this.data.set(item.id, item);
-            this.pathToIdMap.set(item.path, item.id); // 添加路径映射
-          } else {
-            Logger.warn('跳过无效的数据项:', item);
-          }
-        }
+        this.importRecords(parsed);
       }
     } catch (error) {
       Logger.error('导入 JSON 数据失败:', error);
       throw error;
+    }
+  }
+
+  importRecords(records: MediaData[]): void {
+    this.data.clear();
+    this.pathToIdMap.clear();
+    for (const item of records) {
+      if (this.isValidImageData(item)) {
+        this.addImageData(item);
+      } else {
+        Logger.warn('跳过无效的数据项:', item);
+      }
     }
   }
   
