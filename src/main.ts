@@ -8,7 +8,7 @@ import { getFileMd5 } from './utils/file-hash';
 import { SqliteStore } from './services/sqlite-store';
 import { Logger, LogLevel } from './utils/logger';
 import { GALLERY_VIEW_TYPE, IMAGE_INFO_VIEW_TYPE, DEFAULT_JSON_STORAGE_PATH, DEFAULT_SUPPORTED_FORMATS, DEFAULT_CATEGORIES, SQLITE_STORAGE_PATH } from './constants';
-import { resolveScanFolderPaths, isFileInFolderPaths } from './utils/folders';
+import { isFileInScanFolders } from './utils/folders';
 
 // 导入样式
 import '../styles.css';
@@ -211,8 +211,15 @@ export default class ImageTaggingPlugin extends Plugin {
             await this.dataReady;
             const updated = this.imageDataManager.renamePath(oldPath, file.path);
             if (updated) {
-              this.saveDataToFile();
-              Logger.debug(`已更新重命名图片的路径: ${oldPath} -> ${file.path}`);
+              if (!this.isFileInScanFolder(file.path)) {
+                // 文件被移出扫描目录：不再纳入图库管理，进入删除宽限期
+                // （20s 内若移回扫描目录且内容一致，可经 handleFileCreated 恢复原记录）
+                Logger.warn(`[移出扫描目录] ${oldPath} 已移出扫描目录，记录进入删除宽限期`);
+                this.schedulePendingDeletion(updated, oldPath);
+              } else {
+                this.saveDataToFile();
+                Logger.debug(`已更新重命名图片的路径: ${oldPath} -> ${file.path}`);
+              }
             } else {
               // 记录可能已进入删除宽限期，或已是残留的孤儿记录：尝试按内容认领 / 继承
               await this.handleFileCreated(file as TFile);
@@ -392,6 +399,7 @@ export default class ImageTaggingPlugin extends Plugin {
     new Notice(`从当前页面找到 ${imagePaths.length} 个图片引用`);
     
     let newImagesCount = 0;
+    let skippedCount = 0;
 
     // 为每个找到的图片创建或更新数据记录
     for (const imagePath of imagePaths) {
@@ -399,6 +407,11 @@ export default class ImageTaggingPlugin extends Plugin {
       const file = await this.getImageInfoFromPath(imagePath, activeFile);
       
       if (file && this.isSupportedImageFile(file)) {
+        // 不在扫描目录内的媒体不纳入图库记录（仅处理扫描目录内文件）
+        if (!this.isFileInScanFolder(file.path)) {
+          skippedCount++;
+          continue;
+        }
         const existing = this.imageDataManager.getImageDataByPath(file.path);
         const imageData = await this.ensureImageDataForFile(file);
         if (imageData && (!existing || existing.id !== imageData.id)) {
@@ -407,9 +420,14 @@ export default class ImageTaggingPlugin extends Plugin {
       }
     }
     
-    if (newImagesCount > 0) {
-      await this.saveDataToFile();
-      new Notice(`已添加 ${newImagesCount} 个新的图片记录。`);
+    if (newImagesCount > 0 || skippedCount > 0) {
+      if (newImagesCount > 0) {
+        await this.saveDataToFile();
+      }
+      const parts: string[] = [];
+      if (newImagesCount > 0) parts.push(`已添加 ${newImagesCount} 个新的图片记录`);
+      if (skippedCount > 0) parts.push(`跳过 ${skippedCount} 个不在扫描目录内的图片`);
+      new Notice(parts.join('；'));
     } else if (imagePaths.length > 0) {
       new Notice('所有图片记录已存在。');
     }
@@ -613,14 +631,28 @@ export default class ImageTaggingPlugin extends Plugin {
   /**
    * 新文件出现 / 改名但无路径记录时统一入口：
    * 等待数据就绪后交由 ensureImageDataForFile 完成新建 / 按内容继承 / 宽限期认领 / 同内容合并去重。
+   * 不在扫描目录内的文件直接忽略：不扫描 / 不建记录（扫描目录为空 = 扫描整个库，不限制）。
    */
   private async handleFileCreated(file: TFile): Promise<void> {
     await this.dataReady;
     if (this.imageDataManager.getImageDataByPath(file.path)) return;
+    // 不在扫描目录内的文件不纳入图库管理
+    if (!this.isFileInScanFolder(file.path)) {
+      Logger.debug(`忽略扫描目录外的媒体文件: ${file.path}`);
+      return;
+    }
     const ensured = await this.ensureImageDataForFile(file);
     if (ensured) {
       await this.saveDataToFile();
     }
+  }
+
+  /**
+   * 判断文件路径是否在当前扫描目录设置范围内。
+   * 未配置扫描目录（空）表示扫描整个库，恒返回 true。
+   */
+  private isFileInScanFolder(filePath: string): boolean {
+    return isFileInScanFolders(filePath, this.settings.scanFolderPath, this.settings.scanMultipleFolderPaths);
   }
 
   // 记录 id 是否为某内容 MD5 派生（id 形如 md5 或 md5-<后缀>）
@@ -919,16 +951,8 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
     let allFiles = this.app.vault.getFiles();
 
-    // 解析扫描目录：优先多目录设置，回退到旧单目录；为空表示扫描整个库
-    const folderPathsToUse = resolveScanFolderPaths(
-      this.settings.scanFolderPath,
-      this.settings.scanMultipleFolderPaths
-    );
-
-    // 如果设置了扫描文件夹路径，则只扫描这些文件夹中的文件
-    if (folderPathsToUse.length > 0) {
-      allFiles = allFiles.filter(file => isFileInFolderPaths(file.path, folderPathsToUse));
-    }
+    // 如果设置了扫描文件夹路径，则只扫描这些文件夹中的文件（未配置=扫描整个库）
+    allFiles = allFiles.filter(file => this.isFileInScanFolder(file.path));
 
     // 过滤出支持的媒体文件
     const supportedFiles = allFiles.filter(file => this.isSupportedImageFile(file));
