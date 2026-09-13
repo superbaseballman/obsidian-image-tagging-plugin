@@ -35,11 +35,9 @@ export function getSafeImagePath(app: App, path: string | undefined | null): str
       return path;
     }
 
-    // 如果路径不包含完整路径（例如只包含文件名），尝试在 vault 中查找
+    // 如果路径不包含完整路径（例如只包含文件名），用链接解析在库中查找（避免遍历全部文件）
     if (!path.includes('/') && !path.includes('\\')) {
-      // 如果只有文件名，尝试在 vault 中查找匹配的文件
-      const files = app.vault.getFiles();
-      const matchingFile = files.find(file => file.name === path || file.basename + '.' + file.extension === path);
+      const matchingFile = app.metadataCache.getFirstLinkpathDest(path, '');
       if (matchingFile) {
         return app.vault.getResourcePath(matchingFile);
       }
@@ -75,28 +73,47 @@ export interface ImageTaggingPlugin {
   ensureImageDataForFile(file: TFile): Promise<MediaData | undefined>;
 }
 
+/** 插件在 manifest 中注册的 id（必须与 manifest.json 的 id 一致） */
+export const IMAGE_TAGGING_PLUGIN_ID = 'image-tagging';
+
+/** 历史遗留 id：早期版本曾使用过，保留兼容以免旧环境取不到实例 */
+const LEGACY_PLUGIN_IDS = ['image-tagging-obsidian'];
+
 // 获取插件实例
 export function getImageTaggingPlugin(app: App): ImageTaggingPlugin | null {
   try {
-    // 首先尝试标准方式获取
-    const plugins = (app as any).plugins as { [key: string]: ImageTaggingPlugin } | undefined;
-    if (plugins && plugins['image-tagging-obsidian']) {
-      return plugins['image-tagging-obsidian'];
-    }
-    
-    // 如果标准方式失败，尝试其他方式
-    // 检查插件是否在其他可能的位置
-    if ((app as any).plugins?.plugins) {
-      const allPlugins = (app as any).plugins.plugins;
-      if (allPlugins && allPlugins['image-tagging-obsidian']) {
-        return allPlugins['image-tagging-obsidian'] as ImageTaggingPlugin;
+    const manager = (app as any).plugins as
+      | {
+          getPlugin?: (id: string) => unknown;
+          plugins?: { [key: string]: unknown };
+          [key: string]: unknown;
+        }
+      | undefined;
+    const ids = [IMAGE_TAGGING_PLUGIN_ID, ...LEGACY_PLUGIN_IDS];
+    const candidates: unknown[] = [];
+
+    // 1) 标准方式：plugins.getPlugin(id)
+    if (typeof manager?.getPlugin === 'function') {
+      for (const id of ids) {
+        candidates.push(manager.getPlugin(id));
       }
     }
-    
-    // 如果仍然找不到，返回 null
+    // 2) 兼容直接索引 / 内层 plugins 映射
+    for (const id of ids) {
+      candidates.push(manager?.[id], manager?.plugins?.[id]);
+    }
+
+    for (const candidate of candidates) {
+      const instance = candidate as ImageTaggingPlugin | undefined;
+      // 以 imageDataManager 作为识别标记，避免拿到同名 / 无关对象
+      if (instance && instance.imageDataManager) {
+        return instance;
+      }
+    }
+
     return null;
   } catch (error) {
-    console.error('获取插件实例时出错:', error);
+    Logger.error('获取插件实例时出错:', error);
     return null;
   }
 }
@@ -238,6 +255,51 @@ export async function preloadImageInfo(files: TFile[], app: App, maxConcurrent =
 }
 
 /**
+ * 解析 app:// 资源 URL 为库内文件。
+ * 兼容两种形式：
+ * - 新版 / 移动端：app://<vaultId>/<库内相对路径>
+ * - 桌面端旧版：app://local/<绝对路径>
+ * 大多数情况下无需遍历全库，仅在最后手段才与 getResourcePath 精确比对。
+ */
+export function resolveAppResourceUrl(app: App, src: string): TFile | null {
+  const withoutScheme = src.slice('app://'.length).split('?')[0];
+  const slashIndex = withoutScheme.indexOf('/');
+  let candidate = slashIndex >= 0 ? withoutScheme.slice(slashIndex + 1) : withoutScheme;
+  try {
+    candidate = decodeURIComponent(candidate);
+  } catch {
+    // 解码失败时保留原字符串
+  }
+
+  // 1) 直接按库内相对路径查找
+  const direct = app.vault.getAbstractFileByPath(candidate);
+  if (direct instanceof TFile) return direct;
+
+  // 2) 桌面端绝对路径 → 转换为库内相对路径
+  const basePath = (app.vault.adapter as any)?.getBasePath?.();
+  if (typeof basePath === 'string' && basePath) {
+    const normalizedBase = basePath.replace(/\\/g, '/').replace(/\/$/, '');
+    const normalizedCandidate = candidate.replace(/\\/g, '/');
+    if (normalizedCandidate.toLowerCase().startsWith(`${normalizedBase.toLowerCase()}/`)) {
+      const relative = normalizedCandidate.slice(normalizedBase.length + 1);
+      const relativeFile = app.vault.getAbstractFileByPath(relative);
+      if (relativeFile instanceof TFile) return relativeFile;
+    }
+  }
+
+  // 3) 退化为按文件名解析
+  const name = candidate.split('/').pop() || candidate;
+  const byName = app.metadataCache.getFirstLinkpathDest(name, '');
+  if (byName) return byName;
+
+  // 4) 最后手段：与 getResourcePath 精确比对（避免同名文件误判）
+  for (const f of app.vault.getFiles()) {
+    if (app.vault.getResourcePath(f) === src) return f;
+  }
+  return null;
+}
+
+/**
  * 从图片路径获取 TFile 对象
  * @param imagePath 图片路径
  * @param app Obsidian App 实例
@@ -246,7 +308,13 @@ export async function preloadImageInfo(files: TFile[], app: App, maxConcurrent =
 export function getImageFileFromPath(imagePath: string, app: App): TFile | null {
   // 处理不同格式的图片路径
   if (!imagePath) return null;
-  
+
+  // app:// 资源 URL（渲染后的图片 src）：优先用专属解析器处理
+  if (imagePath.startsWith('app://')) {
+    const resolved = resolveAppResourceUrl(app, imagePath);
+    if (resolved) return resolved;
+  }
+
   // 去除 Obsidian 特定的协议前缀和查询参数
   let cleanPath = imagePath.replace(/^app:\/\/\+\/\w+\//, '');
   if (cleanPath.includes('?')) {
@@ -271,9 +339,9 @@ export function getImageFileFromPath(imagePath: string, app: App): TFile | null 
     }
   }
 
-  // 尝试匹配文件名
+  // 尝试用 Obsidian 的链接解析匹配文件名（避免遍历整个库，图库渲染时开销更小）
   if (!cleanPath.includes('/')) {
-    const matchingFile = app.vault.getFiles().find(f => f.name === cleanPath || f.basename === cleanPath);
+    const matchingFile = app.metadataCache.getFirstLinkpathDest(cleanPath, activeFile?.path || '');
     if (matchingFile) {
       return matchingFile;
     }

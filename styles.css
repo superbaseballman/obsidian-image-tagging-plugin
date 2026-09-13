@@ -1426,3 +1426,61 @@
     align-items: flex-start;
   }
 }
+
+/* ===== 设置页：扫描文件夹选择器 ===== */
+.image-tagging-folder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 12px;
+}
+
+.image-tagging-folder-empty {
+  color: var(--text-muted);
+  font-size: 0.85em;
+  padding: 8px 12px;
+  border: 1px dashed var(--background-modifier-border);
+  border-radius: 6px;
+}
+
+.image-tagging-folder-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background-color: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.image-tagging-folder-path {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9em;
+  color: var(--text-normal);
+}
+
+.image-tagging-folder-remove {
+  flex: 0 0 auto;
+  font-size: 0.85em;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+
+.image-tagging-folder-actions.setting-item {
+  border-top: none;
+  padding-top: 0;
+}
+
+/* 移动端：放大触控目标，便于手指点击 */
+.is-mobile .image-tagging-folder-remove {
+  padding: 8px 16px;
+  font-size: 0.9em;
+}
+
+.is-mobile .image-tagging-folder-item {
+  padding: 8px 12px;
+}

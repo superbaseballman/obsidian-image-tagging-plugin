@@ -343,25 +343,11 @@ export class GalleryView extends ItemView {
 
   }
 
-  private imageGrid: HTMLElement;
+  private imageGrid!: HTMLElement;
 
   private async refreshData() {
     // 从插件实例获取最新数据
-    let plugin = getImageTaggingPlugin(this.app);
-    
-    // 如果直接获取失败，尝试通过 workspace 获取
-    if (!plugin) {
-      // 遍历已加载的插件尝试找到当前插件
-      const allPlugins = (this.app as any).plugins.plugins;
-      if (allPlugins) {
-        for (const [id, pluginInstance] of Object.entries(allPlugins)) {
-          if (id === 'image-tagging-obsidian') {
-            plugin = pluginInstance as any;
-            break;
-          }
-        }
-      }
-    }
+    const plugin = getImageTaggingPlugin(this.app);
     
     if (plugin && plugin.imageDataManager) {
       // 更新本地引用的数据管理器
@@ -385,22 +371,8 @@ export class GalleryView extends ItemView {
       await readyPlugin.dataReady;
     }
 
-    // 尝试多次获取插件实例，因为有时可能由于加载时机问题无法立即获取
-    let plugin = getImageTaggingPlugin(this.app);
-    
-    // 如果直接获取失败，尝试通过 workspace 获取
-    if (!plugin) {
-      // 遍历已加载的插件尝试找到当前插件
-      const allPlugins = (this.app as any).plugins.plugins;
-      if (allPlugins) {
-        for (const [id, pluginInstance] of Object.entries(allPlugins)) {
-          if (id === 'image-tagging-obsidian') {
-            plugin = pluginInstance as any;
-            break;
-          }
-        }
-      }
-    }
+    // 尝试获取插件实例（插件实例由 getImageTaggingPlugin 统一解析，含 id 兼容）
+    const plugin = getImageTaggingPlugin(this.app);
     
     if (!plugin) {
       new Notice('无法获取插件实例，刷新失败');
@@ -440,21 +412,7 @@ export class GalleryView extends ItemView {
   private async scanImagesBasedOnSettings() {
 
     // 获取插件实例
-    let plugin = getImageTaggingPlugin(this.app);
-    
-    // 如果直接获取失败，尝试通过 workspace 获取
-    if (!plugin) {
-      // 遍历已加载的插件尝试找到当前插件
-      const allPlugins = (this.app as any).plugins.plugins;
-      if (allPlugins) {
-        for (const [id, pluginInstance] of Object.entries(allPlugins)) {
-          if (id === 'image-tagging-obsidian') {
-            plugin = pluginInstance as any;
-            break;
-          }
-        }
-      }
-    }
+    const plugin = getImageTaggingPlugin(this.app);
     
     if (!plugin || !plugin.imageDataManager) {
       new Notice('无法获取插件数据管理器，扫描失败');

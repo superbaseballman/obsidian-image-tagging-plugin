@@ -319,6 +319,25 @@ export class ImageDataManager {
   getRecentTags(): string[] {
     return [...this.recentTags]; // 返回副本
   }
+
+  /**
+   * 覆盖最近使用标签（用于设置异步加载完成后同步到管理器，
+   * 避免启动时阻塞在 loadData 上而丢失去重数据里的最近标签）。
+   */
+  setRecentTags(tags: string[]): void {
+    this.recentTags = Array.isArray(tags) ? tags.slice(0, this.maxRecentTags) : [];
+  }
+
+  /**
+   * 是否存在历史派生的同内容记录（id 形如 md5-<后缀>）。
+   * 启动时的规整逻辑可据此快速短路，避免每次启动都对全部记录做一遍 O(n) 检查。
+   */
+  hasDerivedContentIds(): boolean {
+    for (const id of this.data.keys()) {
+      if (/^[0-9a-f]{32}-.+$/.test(id)) return true;
+    }
+    return false;
+  }
   
   // 从 JSON 导入数据
   importFromJSON(jsonData: string): void {

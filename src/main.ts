@@ -1,14 +1,16 @@
-import { App, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, Notice, Menu, FileSystemAdapter } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, TFile, TFolder, WorkspaceLeaf, Notice, Menu, FileSystemAdapter } from 'obsidian';
 import { MediaData, ImageTaggingSettings, DEFAULT_SETTINGS, ImageDataManager, getMediaType } from './models/image-data-model';
 import { DataMigration } from './services/data-migration';
 import { ImageView } from './views/image-info-view';
 import { GalleryView } from './views/gallery-view';
+import { FolderSuggestModal, VaultFileSuggestModal } from './views/suggest-modals';
 import { getImageResolutionWithCache, getImageFileFromPath, getMediaDurationWithCache, formatFileSize } from './utils/utils';
 import { getFileMd5 } from './utils/file-hash';
 import { SqliteStore } from './services/sqlite-store';
 import { Logger, LogLevel } from './utils/logger';
+import { isDesktopApp, openFileWithDefaultApp, getElectronDialog, getNodeFs, getPathSeparator, getVaultBasePath } from './utils/platform';
 import { GALLERY_VIEW_TYPE, IMAGE_INFO_VIEW_TYPE, DEFAULT_JSON_STORAGE_PATH, DEFAULT_SUPPORTED_FORMATS, DEFAULT_CATEGORIES, SQLITE_STORAGE_PATH } from './constants';
-import { isFileInScanFolders } from './utils/folders';
+import { isFileInScanFolders, normalizeFolderPath } from './utils/folders';
 
 // 导入样式
 import '../styles.css';
@@ -32,80 +34,22 @@ export default class ImageTaggingPlugin extends Plugin {
   private pendingDeleted = new Map<string, { record: MediaData; timer: number }>();
 
   async onload() {
-    await this.loadSettings();
+    // 先用默认设置同步初始化，避免插件启用被设置读取（磁盘 I/O）阻塞；
+    // 设置随后异步加载并「原地合并」进同一对象，保证此前注册的视图 / 命令持有的引用不失效。
+    this.settings = Object.assign({}, DEFAULT_SETTINGS) as ImageTaggingSettings;
+    const settingsReady = this.loadSettings();
+
     this.imageDataManager = new ImageDataManager(this.settings.recentTags);
     this.sqliteStore = new SqliteStore(this.app, SQLITE_STORAGE_PATH);
 
-    // 恢复布局中的视图可能在此回调完成前打开，先暴露数据就绪状态，避免视图扫描空数据并覆盖已有文件。
-    this.dataReady = new Promise<void>((resolve) => {
-      this.app.workspace.onLayoutReady(async () => {
-          await this.loadDataFromFile();
-          await this.autoMigrateLegacyData();
-          await this.normalizeDuplicateContentRecords();
-        resolve();
-      });
-    });
+    // 数据就绪：等设置 → 等布局就绪 → 等首屏空闲后再读取数据。
+    // 把 sql.js 初始化与数据库读取移出启动关键路径，减少启用插件时的卡顿；
+    // 视图与文件事件都 await 它，避免在数据未就绪时误建空记录覆盖已有数据。
+    this.dataReady = this.initializeData(settingsReady);
 
-    // 注册图片右键菜单
-    this.registerDomEvent(document, 'contextmenu', async (evt: MouseEvent) => {
-      // 只处理 markdown 渲染区域的图片
-      const target = evt.target as HTMLElement;
-      if (!target) return;
-      // 兼容 Obsidian 预览和编辑模式下的图片
-      let imgEl: HTMLImageElement | null = null;
-      if (target.tagName === 'IMG') {
-        imgEl = target as HTMLImageElement;
-      } else if (target.closest) {
-        const found = target.closest('img');
-        if (found) imgEl = found as HTMLImageElement;
-      }
-      if (!imgEl) return;
-
-      // 尝试获取图片 src 并解析为 vault 内的文件
-      const src = imgEl.getAttribute('src');
-      if (!src) return;
-      let file: TFile | null = null;
-      if (src.startsWith('app://')) {
-        const files = this.app.vault.getFiles();
-        file = files.find(f => (this.app.vault.getResourcePath(f) === src)) || null;
-      } else {
-        const abstractFile = this.app.vault.getAbstractFileByPath(src);
-        file = abstractFile instanceof TFile ? abstractFile : null;
-      }
-      if (!file || !this.isSupportedImageFile(file)) return;
-
-      // 构造自定义菜单
-      const menu = new Menu();
-      menu.addItem((item) => {
-        item.setTitle('显示媒体信息').setIcon('image').onClick(async () => {
-          if (!file) return;
-          await this.openImageInfoPanel();
-          await this.updateImageInfoPanel(file);
-        });
-      });
-      menu.addItem((item) => {
-        item.setTitle('在新标签页打开').setIcon('external-link').onClick(async () => {
-          if (!file) return;
-          const leaf = this.app.workspace.getLeaf('tab');
-          await leaf.openFile(file);
-        });
-      });
-      menu.addItem((item) => {
-        item.setTitle('用默认软件打开').setIcon('external-link').onClick(async () => {
-          if (!file) return;
-          const adapter = this.app.vault.adapter;
-          if (adapter instanceof FileSystemAdapter) {
-            const fullPath = adapter.getFullPath(file.path);
-            require('electron').shell.openPath(fullPath);
-          } else {
-            new Notice('无法获取文件路径');
-          }
-        });
-      });
-      // 阻止原生菜单并显示自定义菜单
-      evt.preventDefault();
-      menu.showAtPosition({x: evt.clientX, y: evt.clientY});
-    });
+    // 图片右键菜单统一由下方 registerDocument(...) / window-open 注册的委托监听器处理
+    // （见 onImageContextMenu），此处不再重复注册 document 级 contextmenu：
+    // 既减少启动时的监听器数量，也避免同一次右键弹出两个菜单。
     // 添加设置选项卡
     this.addSettingTab(new ImageTaggingSettingTab(this.app, this));
 
@@ -306,12 +250,8 @@ export default class ImageTaggingPlugin extends Plugin {
                   const activeFile = view?.file || this.app.workspace.getActiveFile();
                   const file = await this.getImageInfoFromPath(foundPath!, activeFile as TFile);
                   if (file && this.isSupportedImageFile(file as TFile)) {
-                    const adapter = this.app.vault.adapter;
-                    if (adapter instanceof FileSystemAdapter) {
-                      const fullPath = adapter.getFullPath(file.path);
-                      require('electron').shell.openPath(fullPath);
-                    } else {
-                      new Notice('无法获取文件路径');
+                    if (!openFileWithDefaultApp(this.app, file as TFile)) {
+                      new Notice(isDesktopApp() ? '无法获取文件路径' : '移动端不支持用默认软件打开');
                     }
                   } else {
                     new Notice('未找到图片文件或不支持的图片格式');
@@ -331,6 +271,47 @@ export default class ImageTaggingPlugin extends Plugin {
 
     this.app.workspace.on("window-open", (workspaceWindow, window) => {
       this.registerDocument(window.document);
+    });
+  }
+
+  /**
+   * 启动时的数据初始化：设置加载 → 布局就绪 → 首屏空闲 → 读取数据。
+   *
+   * 关键点：把「设置读取 / sql.js 初始化 / 数据库读取」从插件启用的同步路径上移走，
+   * 让界面先完成渲染，减少启动卡顿（移动端效果尤其明显）。
+   * 期间视图与文件事件回调都会 await this.dataReady，行为与之前一致。
+   */
+  private async initializeData(settingsReady: Promise<void>): Promise<void> {
+    try {
+      await settingsReady;
+      await this.waitForLayoutReady();
+      await this.waitForIdle();
+      await this.loadDataFromFile();
+      await this.autoMigrateLegacyData();
+      await this.normalizeDuplicateContentRecords();
+    } catch (error) {
+      Logger.error('初始化媒体标签数据失败:', error);
+    }
+  }
+
+  /** 等待工作区布局就绪（若已就绪则立即 resolve） */
+  private waitForLayoutReady(): Promise<void> {
+    return new Promise<void>((resolve) => {
+      this.app.workspace.onLayoutReady(() => resolve());
+    });
+  }
+
+  /** 等待浏览器空闲，让首屏渲染先完成；不支持 requestIdleCallback 时退化为 setTimeout */
+  private waitForIdle(): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const idleWindow = window as unknown as {
+        requestIdleCallback?: (cb: () => void, options?: { timeout: number }) => number;
+      };
+      if (typeof idleWindow.requestIdleCallback === 'function') {
+        idleWindow.requestIdleCallback(() => resolve(), { timeout: 1500 });
+      } else {
+        window.setTimeout(resolve, 0);
+      }
     });
   }
 
@@ -758,14 +739,62 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
   async loadSettings() {
     const loadedData = await this.loadData();
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
+    // 原地合并：onload 中已用默认值初始化 this.settings，视图 / 命令持有的是同一对象引用，
+    // 后续设置加载完成无需重新注册即可生效。
+    Object.assign(this.settings, DEFAULT_SETTINGS, loadedData || {});
     if (!this.settings.jsonStoragePath) {
       this.settings.jsonStoragePath = DEFAULT_SETTINGS.jsonStoragePath;
     }
+    // 修正历史数据中可能缺失 / 类型错误的字段，避免后续 .split / .map 报错
+    if (!Array.isArray(this.settings.scanMultipleFolderPaths)) {
+      this.settings.scanMultipleFolderPaths = [];
+    }
+    if (!Array.isArray(this.settings.supportedFormats) || this.settings.supportedFormats.length === 0) {
+      this.settings.supportedFormats = [...DEFAULT_SUPPORTED_FORMATS];
+    }
+    if (!Array.isArray(this.settings.recentTags)) {
+      this.settings.recentTags = [];
+    }
+    if (!Array.isArray(this.settings.categories) || this.settings.categories.length === 0) {
+      this.settings.categories = [...DEFAULT_CATEGORIES];
+    }
+    // 设置异步加载完成，把最近标签同步给已创建的数据管理器
+    this.imageDataManager?.setRecentTags(this.settings.recentTags);
   }
 
   async saveSettings() {
     await this.saveData(this.settings);
+  }
+
+  /**
+   * 规整扫描文件夹设置：归一化路径、去重、去空，并同步旧字段 scanFolderPath 以保持兼容。
+   */
+  async saveScanFolderSettings(): Promise<void> {
+    const folders = (this.settings.scanMultipleFolderPaths || [])
+      .map(path => normalizeFolderPath(path))
+      .filter((path, index, arr) => path.length > 0 && arr.indexOf(path) === index);
+    this.settings.scanMultipleFolderPaths = folders;
+    this.settings.scanFolderPath = folders.join(';');
+    await this.saveSettings();
+  }
+
+  /**
+   * 通过文件夹选择器添加扫描文件夹。
+   * 选择库根目录等价于「不限制范围」，此时清空列表。
+   */
+  async addScanFolder(folder: TFolder): Promise<void> {
+    if (!folder || folder.isRoot()) {
+      this.settings.scanMultipleFolderPaths = [];
+      await this.saveScanFolderSettings();
+      return;
+    }
+
+    const normalized = normalizeFolderPath(folder.path);
+    const current = this.settings.scanMultipleFolderPaths || [];
+    if (!current.includes(normalized)) {
+      this.settings.scanMultipleFolderPaths = [...current, normalized];
+    }
+    await this.saveScanFolderSettings();
   }
 
   async loadDataFromFile() {
@@ -804,6 +833,9 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
    * 避免同内容因派生 id 拆分成多条导致标签分散 / 数据不合并。
    */
   private async normalizeDuplicateContentRecords(): Promise<void> {
+    // 快速路径：没有任何形如 md5-<后缀> 的派生记录时直接跳过，避免每次启动都全量遍历合并
+    if (!this.imageDataManager.hasDerivedContentIds()) return;
+
     const merged = this.imageDataManager.mergeDerivedContentRecords((path) => {
       const f = this.app.vault.getAbstractFileByPath(path);
       return f instanceof TFile;
@@ -882,49 +914,103 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
     }
   }
 
+  /**
+   * 导出全部标签数据为 JSON。
+   * 桌面端：走系统「另存为」对话框；移动端：写入库内文件（Obsidian 沙箱内无系统文件选择器）。
+   */
   async exportJson(): Promise<void> {
     try {
-      const electron = require('electron');
-      const dialog = electron.remote?.dialog || electron.dialog;
-      const basePath = (this.app.vault.adapter as any).getBasePath?.() || '';
-      const defaultPath = basePath
-        ? `${basePath}${require('path').sep}image-tags-export.json`
-        : 'image-tags-export.json';
-      const result = await dialog.showSaveDialog({
-        title: '导出 JSON 数据',
-        defaultPath,
-        filters: [{ name: 'JSON 文件', extensions: ['json'] }]
-      });
-      if (result.canceled || !result.filePath) return;
+      const json = this.imageDataManager.exportToJSON();
+      const dialog = getElectronDialog();
+      const fs = getNodeFs();
 
-      require('fs').writeFileSync(result.filePath, this.imageDataManager.exportToJSON(), 'utf8');
-      new Notice(`JSON 数据已导出：${result.filePath}`);
+      if (dialog && fs) {
+        const basePath = getVaultBasePath(this.app);
+        const defaultPath = basePath
+          ? `${basePath}${getPathSeparator()}image-tags-export.json`
+          : 'image-tags-export.json';
+        const result = await dialog.showSaveDialog({
+          title: '导出 JSON 数据',
+          defaultPath,
+          filters: [{ name: 'JSON 文件', extensions: ['json'] }]
+        });
+        if (result.canceled || !result.filePath) return;
+
+        fs.writeFileSync(result.filePath, json, 'utf8');
+        new Notice(`JSON 数据已导出：${result.filePath}`);
+        return;
+      }
+
+      // 移动端 / 无 Electron 能力：导出到库根目录下的文件
+      const targetPath = await this.createUniqueVaultPath('image-tags-export.json');
+      await this.app.vault.adapter.write(targetPath, json);
+      new Notice(`JSON 数据已导出到库内文件：${targetPath}`);
     } catch (error) {
       Logger.error('导出 JSON 数据失败:', error);
       new Notice('导出 JSON 数据失败，请查看控制台。');
     }
   }
 
+  /**
+   * 导入 JSON 数据。
+   * 桌面端：系统「打开文件」对话框；移动端：库内文件选择器。
+   */
   async importJsonFromDialog(): Promise<void> {
     try {
-      const electron = require('electron');
-      const dialog = electron.remote?.dialog || electron.dialog;
-      const result = await dialog.showOpenDialog({
-        title: '选择 JSON 数据',
-        properties: ['openFile'],
-        filters: [{ name: 'JSON 文件', extensions: ['json'] }]
-      });
-      if (result.canceled || result.filePaths.length === 0) return;
+      const dialog = getElectronDialog();
+      const fs = getNodeFs();
 
-      const jsonData = require('fs').readFileSync(result.filePaths[0], 'utf8');
-      const records = await DataMigration.loadDataWithMigrationForApp(jsonData, this.app);
-      this.imageDataManager.importRecords(records);
-      await this.sqliteStore.save(this.imageDataManager.getAllImageData());
-      new Notice(`已导入 ${records.length} 条 JSON 数据。`);
+      if (dialog && fs) {
+        const result = await dialog.showOpenDialog({
+          title: '选择 JSON 数据',
+          properties: ['openFile'],
+          filters: [{ name: 'JSON 文件', extensions: ['json'] }]
+        });
+        if (result.canceled || result.filePaths.length === 0) return;
+
+        const jsonData = fs.readFileSync(result.filePaths[0], 'utf8') as string;
+        await this.applyImportedJson(jsonData);
+        return;
+      }
+
+      // 移动端 / 无 Electron 能力：从库内挑选 JSON 文件
+      new VaultFileSuggestModal(this.app, 'json', async (file) => {
+        try {
+          const jsonData = await this.app.vault.read(file);
+          await this.applyImportedJson(jsonData);
+        } catch (error) {
+          Logger.error('导入 JSON 数据失败:', error);
+          new Notice('导入 JSON 数据失败，请确认文件格式正确。');
+        }
+      }).open();
     } catch (error) {
       Logger.error('导入 JSON 数据失败:', error);
       new Notice('导入 JSON 数据失败，请确认文件格式正确。');
     }
+  }
+
+  /** 解析并合并导入的 JSON 数据，随后落库 */
+  private async applyImportedJson(jsonData: string): Promise<void> {
+    const records = await DataMigration.loadDataWithMigrationForApp(jsonData, this.app);
+    this.imageDataManager.importRecords(records);
+    await this.sqliteStore.save(this.imageDataManager.getAllImageData());
+    new Notice(`已导入 ${records.length} 条 JSON 数据。`);
+  }
+
+  /** 在库根目录下生成不冲突的文件名（用于移动端导出） */
+  private async createUniqueVaultPath(fileName: string): Promise<string> {
+    const adapter = this.app.vault.adapter;
+    const dotIndex = fileName.lastIndexOf('.');
+    const baseName = dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
+    const extension = dotIndex > 0 ? fileName.slice(dotIndex) : '';
+    let candidate = fileName;
+    let index = 1;
+    while (await adapter.exists(candidate)) {
+      candidate = `${baseName}-${index}${extension}`;
+      index += 1;
+      if (index > 1000) break;
+    }
+    return candidate;
   }
 
   async saveDataToFile() {
@@ -1071,12 +1157,8 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
               .setTitle('用默认软件打开')
               .setIcon('external-link')
               .onClick(async () => {
-                const adapter = this.app.vault.adapter;
-                if (adapter instanceof FileSystemAdapter) {
-                  const fullPath = adapter.getFullPath(file.path);
-                  require('electron').shell.openPath(fullPath);
-                } else {
-                  new Notice('无法获取文件路径');
+                if (!openFileWithDefaultApp(this.app, file)) {
+                  new Notice(isDesktopApp() ? '无法获取文件路径' : '移动端不支持用默认软件打开');
                 }
               });
           });
@@ -1267,33 +1349,61 @@ class ImageTaggingSettingTab extends PluginSettingTab {
 
       .setName('扫描指定文件夹')
 
-      .setDesc('指定要扫描图片的文件夹路径，多个路径用分号(;)分隔（留空则扫描整个库）')
+      .setDesc('仅扫描所选文件夹中的媒体文件；未添加任何文件夹时扫描整个库（可添加多个）');
 
-      .addText(text => text
+    // 用文件夹选择器代替手写路径：桌面端与移动端行为一致，也不会写错路径
+    const scanFolderListEl = containerEl.createDiv({ cls: 'image-tagging-folder-list' });
 
-        .setPlaceholder('例如：Attachments/images;Pictures')
+    const renderScanFolders = () => {
+      scanFolderListEl.empty();
+      const folders = this.plugin.settings.scanMultipleFolderPaths || [];
 
-        .setValue(this.plugin.settings.scanFolderPath)
+      if (folders.length === 0) {
+        scanFolderListEl.createDiv({
+          cls: 'image-tagging-folder-empty',
+          text: '当前未限制范围，将扫描整个库'
+        });
+        return;
+      }
 
-        .onChange(async (value) => {
+      folders.forEach((folderPath) => {
+        const itemEl = scanFolderListEl.createDiv({ cls: 'image-tagging-folder-item' });
+        itemEl.createSpan({ cls: 'image-tagging-folder-path', text: folderPath });
+        const removeButton = itemEl.createEl('button', {
+          cls: 'image-tagging-folder-remove',
+          text: '移除'
+        });
+        removeButton.addEventListener('click', async (evt) => {
+          evt.preventDefault();
+          this.plugin.settings.scanMultipleFolderPaths =
+            (this.plugin.settings.scanMultipleFolderPaths || []).filter(p => p !== folderPath);
+          await this.plugin.saveScanFolderSettings();
+          renderScanFolders();
+        });
+      });
+    };
 
-          // 保存到旧字段以保持兼容性
-          this.plugin.settings.scanFolderPath = value;
-          
-          // 同时更新新字段
-          if (value.trim() !== '') {
-            this.plugin.settings.scanMultipleFolderPaths = value
-              .split(';')
-              .map(path => path.trim())
-              .filter(path => path.length > 0);
-          } else {
-            this.plugin.settings.scanMultipleFolderPaths = [];
-          }
-          
-          await this.plugin.saveSettings();
-
+    new Setting(containerEl)
+      .setClass('image-tagging-folder-actions')
+      .addButton(button => button
+        .setButtonText('添加文件夹')
+        .setTooltip('从库中选择一个文件夹加入扫描范围')
+        .setCta()
+        .onClick(() => {
+          new FolderSuggestModal(this.app, async (folder) => {
+            await this.plugin.addScanFolder(folder);
+            renderScanFolders();
+          }).open();
+        }))
+      .addButton(button => button
+        .setButtonText('清空并扫描整库')
+        .onClick(async () => {
+          this.plugin.settings.scanMultipleFolderPaths = [];
+          await this.plugin.saveScanFolderSettings();
+          renderScanFolders();
         }));
-    
+
+    renderScanFolders();
 
   }
 

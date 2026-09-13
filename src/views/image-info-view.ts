@@ -1,6 +1,7 @@
 import { ItemView, WorkspaceLeaf, TFile, Notice } from 'obsidian';
 import { MediaData, ImageTaggingSettings, ImageDataManager, getMediaType } from '../models/image-data-model';
 import { getImageResolutionWithCache, getImageTaggingPlugin, getSafeImagePath, deleteImageFile, getMediaDurationWithCache, formatFileSize } from '../utils/utils';
+import { getFileMd5 } from '../utils/file-hash';
 import { Logger } from '../utils/logger';
 import { IMAGE_INFO_VIEW_TYPE } from '../constants';
 import { isFileInScanFolders } from '../utils/folders';
@@ -65,7 +66,14 @@ export class ImageView extends ItemView {
   // 更新视图以显示指定文件的信息
   async updateForFile(file: TFile | null) {
     this.currentFile = file;
-    
+
+    // 等待插件数据就绪：数据现在是在首屏空闲后才异步加载的，
+    // 若此时数据库尚未读完就新建记录并保存，会把已有数据整体覆盖。
+    const readyPlugin = getImageTaggingPlugin(this.app);
+    if (readyPlugin?.dataReady) {
+      await readyPlugin.dataReady;
+    }
+
     // 如果没有文件或者文件不是支持的媒体格式，则显示提示信息
     if (!file || !this.isSupportedImageFile(file)) {
       this.imageInfoContainer.empty();
@@ -82,8 +90,18 @@ export class ImageView extends ItemView {
     if (!imageData) {
       // 如果没有找到数据，则创建默认数据
       const mediaType = getMediaType(file) || 'image';
+
+      // id 统一使用文件内容 MD5（与图库扫描一致），保证「同内容只有一条记录」且重命名不丢标签。
+      // 计算失败时退化为临时 id，避免因读取失败而无法展示信息。
+      let contentId: string | null = null;
+      try {
+        contentId = await getFileMd5(file, this.app);
+      } catch (e) {
+        Logger.debug('计算文件内容 MD5 失败:', e);
+      }
+
       imageData = {
-        id: `media_${Date.now()}_${file.path || file.name}`,
+        id: contentId || `media_${Date.now()}_${file.path || file.name}`,
         path: file.path || file.name || '',
         title: file.basename,
         tags: [],

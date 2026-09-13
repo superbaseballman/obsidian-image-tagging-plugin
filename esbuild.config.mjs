@@ -8,6 +8,8 @@ build({
   format: 'cjs',
   minify: !isDev,
   platform: 'node',
+  // 输出语法锁定在 es2018：兼容 Android / iOS 端较旧的 WebView
+  target: ['es2018'],
   outfile: 'main.js',
   external: ['obsidian', 'electron'],
   logLevel: 'info',
