@@ -2,7 +2,7 @@
   "id": "image-tagging",
   "name": "Image Tagging",
 
-  "version": "2.2.7",
+  "version": "2.2.8",
   "minAppVersion": "0.16.0",
   "description": "为媒体附件添加标签管理功能，使用 SQLite 存储并以文件 MD5 作为记录标识。",
   "author": "superbasballman",
