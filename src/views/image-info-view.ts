@@ -5,6 +5,7 @@ import { getFileMd5 } from '../utils/file-hash';
 import { Logger } from '../utils/logger';
 import { IMAGE_INFO_VIEW_TYPE } from '../constants';
 import { isFileInScanFolders } from '../utils/folders';
+import { confirmWithModal } from './suggest-modals';
 
 export class ImageView extends ItemView {
   private imageDataManager: ImageDataManager;
@@ -207,33 +208,35 @@ export class ImageView extends ItemView {
     // 根据媒体类型确定第二列显示什么
     let secondColumnLabel = imageData.type === 'image' ? '分辨率' : (imageData.type === 'video' ? '时长' : '时长');
     
-    fileInfoContainer.createEl('p', {}, (el) => {
-      el.innerHTML = `<strong>路径:</strong> <a href="#" class="file-path-link" data-path="${imageData.path}">${imageData.path}</a>`;
-      
-      // 添加点击事件，以便点击链接时可以打开文件
-      const linkEl = el.querySelector('.file-path-link') as HTMLElement;
-      if (linkEl) {
-        linkEl.addEventListener('click', (e) => {
-          e.preventDefault();
-          this.openImageFile(imageData.path);
-        });
-      }
+    const pathRow = fileInfoContainer.createEl('p');
+    pathRow.createEl('strong', { text: '路径:' });
+    const pathLink = pathRow.createEl('a', {
+      cls: 'file-path-link',
+      text: imageData.path,
+      attr: { href: '#', 'data-path': imageData.path }
     });
-    fileInfoContainer.createEl('p', { text: `${imageData.size ? `<strong>大小:</strong> ${imageData.size}` : ''}` }, (el) => {
-      if(imageData.size) el.innerHTML = `<strong>大小:</strong> ${imageData.size}`;
+    pathLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      this.openImageFile(imageData.path);
     });
-    fileInfoContainer.createEl('p', { text: `${imageData.format ? `<strong>格式:</strong> ${imageData.format}` : ''}` }, (el) => {
-      if(imageData.format) el.innerHTML = `<strong>格式:</strong> ${imageData.format}`;
-    });
-    fileInfoContainer.createEl('p', { text: `${imageData.resolution ? `<strong>${secondColumnLabel}:</strong> ${imageData.resolution}` : ''}` }, (el) => {
-      if(imageData.resolution) {
-        const label = imageData.type === 'image' ? '分辨率' : (imageData.type === 'video' ? '时长' : '时长');
-        el.innerHTML = `<strong>${label}:</strong> ${imageData.resolution}`;
-      }
-    });
-    fileInfoContainer.createEl('p', {}, (el) => {
-      el.innerHTML = `<strong>修改时间:</strong> ${new Date(imageData.lastModified).toLocaleString()}`;
-    });
+    if (imageData.size) {
+      const sizeRow = fileInfoContainer.createEl('p');
+      sizeRow.createEl('strong', { text: '大小:' });
+      sizeRow.appendText(` ${imageData.size}`);
+    }
+    if (imageData.format) {
+      const formatRow = fileInfoContainer.createEl('p');
+      formatRow.createEl('strong', { text: '格式:' });
+      formatRow.appendText(` ${imageData.format}`);
+    }
+    if (imageData.resolution) {
+      const resolutionRow = fileInfoContainer.createEl('p');
+      resolutionRow.createEl('strong', { text: `${secondColumnLabel}:` });
+      resolutionRow.appendText(` ${imageData.resolution}`);
+    }
+    const modifiedRow = fileInfoContainer.createEl('p');
+    modifiedRow.createEl('strong', { text: '修改时间:' });
+    modifiedRow.appendText(` ${new Date(imageData.lastModified).toLocaleString()}`);
 
     // 标题编辑
     const titleContainer = infoContainer.createEl('div', { cls: 'info-item' });
@@ -480,7 +483,7 @@ export class ImageView extends ItemView {
 
   private async deleteImageFile(imageData: MediaData) {
     // 确认删除对话框
-    const confirmed = confirm(`确定要删除图片 "${imageData.title}" 吗？`);
+    const confirmed = await confirmWithModal(this.app, `确定要删除图片 "${imageData.title}" 吗？`);
     
     if (!confirmed) {
       return; // 用户取消删除

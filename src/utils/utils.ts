@@ -170,10 +170,10 @@ export async function getMediaDurationWithCache(file: TFile, app: App): Promise<
           file.extension.toLowerCase().includes('aac') ||
           file.extension.toLowerCase().includes('wma')) {
         // 音频文件
-        mediaElement = document.createElement('audio');
+        mediaElement = document.body.createEl('audio');
       } else {
         // 视频文件
-        mediaElement = document.createElement('video');
+        mediaElement = document.body.createEl('video');
       }
       
       mediaElement.src = fileUrl;
@@ -220,8 +220,7 @@ export async function getMediaDurationWithCache(file: TFile, app: App): Promise<
       mediaElement.addEventListener('error', onError);
       
       // 添加到 DOM 但隐藏
-      mediaElement.style.display = 'none';
-      document.body.appendChild(mediaElement);
+      mediaElement.addClass('image-tagging-hidden-media');
     });
   } catch (error) {
     Logger.warn(`获取媒体时长失败: ${file.path}`, error);
@@ -383,7 +382,7 @@ export async function deleteImageFile(
     }
 
     // 从文件系统中删除文件
-    await app.vault.delete(fileToDelete);
+    await app.fileManager.trashFile(fileToDelete);
 
     // 从数据管理器中移除该图片的数据
     imageDataManager.removeImageData(imageData.id);

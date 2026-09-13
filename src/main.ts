@@ -28,6 +28,7 @@ export default class ImageTaggingPlugin extends Plugin {
   imageDataManager: ImageDataManager;
   dataReady: Promise<void>;
   private sqliteStore: SqliteStore;
+  private sqliteStoragePath: string;
   private saveQueue: Promise<void> = Promise.resolve();
   // 删除宽限期内的记录（key 为记录 id）：外部改名常被拆分为 delete + create，
   // 期间若出现内容 MD5 相同的文件则认领该记录，保证 id / 标签 / 描述不丢失。
@@ -37,10 +38,11 @@ export default class ImageTaggingPlugin extends Plugin {
     // 先用默认设置同步初始化，避免插件启用被设置读取（磁盘 I/O）阻塞；
     // 设置随后异步加载并「原地合并」进同一对象，保证此前注册的视图 / 命令持有的引用不失效。
     this.settings = Object.assign({}, DEFAULT_SETTINGS) as ImageTaggingSettings;
+    this.sqliteStoragePath = `${this.app.vault.configDir}/${SQLITE_STORAGE_PATH}`;
     const settingsReady = this.loadSettings();
 
     this.imageDataManager = new ImageDataManager(this.settings.recentTags);
-    this.sqliteStore = new SqliteStore(this.app, SQLITE_STORAGE_PATH);
+    this.sqliteStore = new SqliteStore(this.app, this.sqliteStoragePath);
 
     // 数据就绪：等设置 → 等布局就绪 → 等首屏空闲后再读取数据。
     // 把 sql.js 初始化与数据库读取移出启动关键路径，减少启用插件时的卡顿；
@@ -68,20 +70,20 @@ export default class ImageTaggingPlugin extends Plugin {
       id: 'open-gallery-view',
       name: '打开媒体图库',
       callback: () => {
-        this.openGalleryView();
+        void this.openGalleryView();
       }
     });
 
     // 添加功能区图标
     this.addRibbonIcon('image', '打开媒体图库', (evt: MouseEvent) => {
-      this.openGalleryView();
+      void this.openGalleryView();
     });
 
     this.addCommand({
       id: 'open-image-info-panel',
       name: '打开媒体信息面板',
       callback: () => {
-        this.openImageInfoPanel();
+        void this.openImageInfoPanel();
       }
     });
 
@@ -89,7 +91,7 @@ export default class ImageTaggingPlugin extends Plugin {
       id: 'scan-all-images',
       name: '扫描库中的所有媒体文件',
       callback: () => {
-        this.scanAllImages();
+        void this.scanAllImages();
       }
     });
 
@@ -114,7 +116,7 @@ export default class ImageTaggingPlugin extends Plugin {
       this.app.workspace.on('file-open', (file) => {
         // 当打开文件时，更新右侧信息面板
         // ImageView内部会检查是否为支持的图片文件
-        this.updateImageInfoPanel(file);
+        void this.updateImageInfoPanel(file);
       })
     );
 
@@ -161,7 +163,7 @@ export default class ImageTaggingPlugin extends Plugin {
                 Logger.warn(`[移出扫描目录] ${oldPath} 已移出扫描目录，记录进入删除宽限期`);
                 this.schedulePendingDeletion(updated, oldPath);
               } else {
-                this.saveDataToFile();
+                await this.saveDataToFile();
                 Logger.debug(`已更新重命名图片的路径: ${oldPath} -> ${file.path}`);
               }
             } else {
@@ -250,7 +252,7 @@ export default class ImageTaggingPlugin extends Plugin {
                   const activeFile = view?.file || this.app.workspace.getActiveFile();
                   const file = await this.getImageInfoFromPath(foundPath!, activeFile as TFile);
                   if (file && this.isSupportedImageFile(file as TFile)) {
-                    if (!openFileWithDefaultApp(this.app, file as TFile)) {
+                    if (!await openFileWithDefaultApp(this.app, file as TFile)) {
                       new Notice(isDesktopApp() ? '无法获取文件路径' : '移动端不支持用默认软件打开');
                     }
                   } else {
@@ -602,7 +604,7 @@ export default class ImageTaggingPlugin extends Plugin {
 
     const timer = window.setTimeout(() => {
       this.pendingDeleted.delete(imageData.id);
-      this.saveDataToFile();
+      void this.saveDataToFile();
       Logger.debug(`已确认删除媒体数据: ${deletedPath}`);
     }, PENDING_DELETE_GRACE_MS);
 
@@ -727,8 +729,6 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 }
 
   onunload() {
-    this.app.workspace.detachLeavesOfType(GALLERY_VIEW_TYPE);
-    this.app.workspace.detachLeavesOfType(IMAGE_INFO_VIEW_TYPE);
     // 清理删除宽限期计时器，避免卸载后仍触发保存
     for (const [, entry] of this.pendingDeleted) {
       window.clearTimeout(entry.timer);
@@ -742,8 +742,8 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
     // 原地合并：onload 中已用默认值初始化 this.settings，视图 / 命令持有的是同一对象引用，
     // 后续设置加载完成无需重新注册即可生效。
     Object.assign(this.settings, DEFAULT_SETTINGS, loadedData || {});
-    if (!this.settings.jsonStoragePath) {
-      this.settings.jsonStoragePath = DEFAULT_SETTINGS.jsonStoragePath;
+    if (!this.settings.jsonStoragePath || this.settings.jsonStoragePath === DEFAULT_SETTINGS.jsonStoragePath) {
+      this.settings.jsonStoragePath = `${this.app.vault.configDir}/${DEFAULT_JSON_STORAGE_PATH}`;
     }
     // 修正历史数据中可能缺失 / 类型错误的字段，避免后续 .split / .map 报错
     if (!Array.isArray(this.settings.scanMultipleFolderPaths)) {
@@ -799,14 +799,14 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
   async loadDataFromFile() {
     try {
-      const jsonPaths = [this.settings.jsonStoragePath, '.obsidian/image-tag.json', 'image-tag.json', '旧版本image-tag.json']
+      const jsonPaths = [this.settings.jsonStoragePath, `${this.app.vault.configDir}/image-tag.json`, 'image-tag.json', '旧版本image-tag.json']
         .filter((path, index, paths) => path && paths.indexOf(path) === index);
       const sourcePath = await this.findExistingPath(jsonPaths);
 
       const sqliteRecords = await this.sqliteStore.load();
       if (sqliteRecords.length > 0 || !sourcePath) {
         this.imageDataManager.importRecords(sqliteRecords);
-        Logger.info('SQLite 媒体标签数据加载成功:', SQLITE_STORAGE_PATH);
+        Logger.info('SQLite 媒体标签数据加载成功:', this.sqliteStoragePath);
         return;
       }
 
@@ -867,7 +867,7 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
       if (currentData.length === 0) {
         // 当前数据为空，检查是否存在旧版本数据文件
         const legacyFilePaths = [
-          '.obsidian/image-tag.json',  // 常见的旧版本路径
+          `${this.app.vault.configDir}/image-tag.json`,  // 常见的旧版本路径
           'image-tag.json',           // 可能的相对路径
           '旧版本image-tag.json'      // 根据用户提供的文件名
         ];
@@ -902,7 +902,7 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
    */
   async migrateLegacyData() {
     try {
-      if (await this.app.vault.adapter.exists(SQLITE_STORAGE_PATH)) {
+      if (await this.app.vault.adapter.exists(this.sqliteStoragePath)) {
         new Notice('SQLite 数据已存在，无需迁移。');
         return;
       }
@@ -921,13 +921,12 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
   async exportJson(): Promise<void> {
     try {
       const json = this.imageDataManager.exportToJSON();
-      const dialog = getElectronDialog();
-      const fs = getNodeFs();
+      const [dialog, fs] = await Promise.all([getElectronDialog(), getNodeFs()]);
 
       if (dialog && fs) {
         const basePath = getVaultBasePath(this.app);
         const defaultPath = basePath
-          ? `${basePath}${getPathSeparator()}image-tags-export.json`
+          ? `${basePath}${await getPathSeparator()}image-tags-export.json`
           : 'image-tags-export.json';
         const result = await dialog.showSaveDialog({
           title: '导出 JSON 数据',
@@ -957,8 +956,7 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
    */
   async importJsonFromDialog(): Promise<void> {
     try {
-      const dialog = getElectronDialog();
-      const fs = getNodeFs();
+      const [dialog, fs] = await Promise.all([getElectronDialog(), getNodeFs()]);
 
       if (dialog && fs) {
         const result = await dialog.showOpenDialog({
@@ -1017,7 +1015,7 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
     this.saveQueue = this.saveQueue.then(async () => {
       try {
         await this.sqliteStore.save(this.imageDataManager.getAllImageData());
-        Logger.info('SQLite 媒体标签数据保存成功:', SQLITE_STORAGE_PATH);
+        Logger.info('SQLite 媒体标签数据保存成功:', this.sqliteStoragePath);
       } catch (error) {
         Logger.error('保存 SQLite 媒体标签数据失败:', error);
         new Notice('保存媒体标签数据失败');
@@ -1138,8 +1136,8 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
               .setTitle('查看图片信息')
               .setIcon('image')
               .onClick(() => {
-                this.openImageInfoPanel();
-                this.updateImageInfoPanel(file);
+                void this.openImageInfoPanel();
+                void this.updateImageInfoPanel(file);
               });
           });
           menu.addSeparator();
@@ -1157,7 +1155,7 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
               .setTitle('用默认软件打开')
               .setIcon('external-link')
               .onClick(async () => {
-                if (!openFileWithDefaultApp(this.app, file)) {
+                if (!await openFileWithDefaultApp(this.app, file)) {
                   new Notice(isDesktopApp() ? '无法获取文件路径' : '移动端不支持用默认软件打开');
                 }
               });
@@ -1271,7 +1269,7 @@ class ImageTaggingSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('旧 JSON 数据路径')
-      .setDesc('当前数据存储在 .obsidian/image-tags.db，可从本地文件选择旧 JSON 进行迁移')
+      .setDesc(`当前数据存储在 ${this.app.vault.configDir}/image-tags.db，可从本地文件选择旧 JSON 进行迁移`)
       .addButton(button => button
         .setButtonText('选择并迁移')
         .onClick(async () => {

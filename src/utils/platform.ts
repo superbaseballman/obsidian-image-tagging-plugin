@@ -19,8 +19,8 @@ export function isMobileApp(): boolean {
 }
 
 /** 当前平台是否可以使用 Electron 的对话框能力 */
-export function canUseElectronDialog(): boolean {
-  const electron = getElectron();
+export async function canUseElectronDialog(): Promise<boolean> {
+  const electron = await getElectron();
   return !!(electron?.remote?.dialog || electron?.dialog);
 }
 
@@ -28,10 +28,21 @@ export function canUseElectronDialog(): boolean {
  * 安全获取 Electron 模块（仅桌面端返回，移动端 / 失败返回 null）。
  * 移动端 WebView 没有 require，直接调用会抛 "require is not defined"。
  */
-export function getElectron(): any | null {
+interface ElectronLike {
+  remote?: { dialog?: ElectronDialogLike };
+  dialog?: ElectronDialogLike;
+  shell?: { openPath(path: string): Promise<string> };
+}
+
+interface NodeFsLike {
+  writeFileSync(path: string, data: string, encoding: 'utf8'): void;
+  readFileSync(path: string, encoding: 'utf8'): string;
+}
+
+export async function getElectron(): Promise<ElectronLike | null> {
   if (!isDesktopApp()) return null;
   try {
-    return require('electron');
+    return await import('electron') as unknown as ElectronLike;
   } catch (e) {
     Logger.debug('Electron 模块不可用:', e);
     return null;
@@ -39,10 +50,10 @@ export function getElectron(): any | null {
 }
 
 /** 安全获取 Node 的 fs 模块（仅桌面端可用，移动端返回 null） */
-export function getNodeFs(): any | null {
+export async function getNodeFs(): Promise<NodeFsLike | null> {
   if (!isDesktopApp()) return null;
   try {
-    return require('fs');
+    return await import('fs') as unknown as NodeFsLike;
   } catch (e) {
     Logger.debug('fs 模块不可用:', e);
     return null;
@@ -50,10 +61,11 @@ export function getNodeFs(): any | null {
 }
 
 /** 当前系统的路径分隔符（移动端退回 '/'） */
-export function getPathSeparator(): string {
+export async function getPathSeparator(): Promise<string> {
   if (!isDesktopApp()) return '/';
   try {
-    return require('path').sep as string;
+    const path = await import('path');
+    return path.sep;
   } catch {
     return '/';
   }
@@ -77,8 +89,8 @@ export interface ElectronDialogLike {
  * 安全获取 Electron 的文件对话框。
  * 兼容新旧 Obsidian：优先 remote.dialog，其次直接 dialog；不可用时返回 null。
  */
-export function getElectronDialog(): ElectronDialogLike | null {
-  const electron = getElectron();
+export async function getElectronDialog(): Promise<ElectronDialogLike | null> {
+  const electron = await getElectron();
   const dialog = electron?.remote?.dialog || electron?.dialog;
   return (dialog as ElectronDialogLike) || null;
 }
@@ -87,13 +99,13 @@ export function getElectronDialog(): ElectronDialogLike | null {
  * 用系统默认应用打开文件（仅桌面端）。
  * @returns 是否已成功发起打开操作；移动端或失败返回 false
  */
-export function openFileWithDefaultApp(app: App, file: TFile): boolean {
+export async function openFileWithDefaultApp(app: App, file: TFile): Promise<boolean> {
   if (!isDesktopApp()) return false;
   try {
     const adapter = app.vault.adapter;
     if (adapter instanceof FileSystemAdapter) {
       const fullPath = adapter.getFullPath(file.path);
-      const electron = getElectron();
+      const electron = await getElectron();
       if (!electron?.shell?.openPath) return false;
       void electron.shell.openPath(fullPath);
       return true;

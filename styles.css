@@ -1,5 +1,9 @@
 /* image-tagging-styles.css */
 
+.image-tagging-hidden-media {
+  display: none;
+}
+
 /* 图片信息面板样式 */
 .image-info-panel {
   padding: 10px;

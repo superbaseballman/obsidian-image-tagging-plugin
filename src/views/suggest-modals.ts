@@ -2,7 +2,42 @@
  * 选择器模态框：桌面端与移动端通用（基于 Obsidian 的 FuzzySuggestModal，
  * 不使用 Electron 的文件对话框，因此 Android / iOS 上同样可用）。
  */
-import { App, FuzzySuggestModal, TFile, TFolder } from 'obsidian';
+import { App, FuzzySuggestModal, Modal, TFile, TFolder } from 'obsidian';
+
+export function confirmWithModal(app: App, message: string): Promise<boolean> {
+  return new Promise(resolve => {
+    const modal = new ConfirmModal(app, message, resolve);
+    modal.open();
+  });
+}
+
+class ConfirmModal extends Modal {
+  private readonly message: string;
+  private readonly resolveResult: (confirmed: boolean) => void;
+  private resolved = false;
+
+  constructor(app: App, message: string, resolveResult: (confirmed: boolean) => void) {
+    super(app);
+    this.message = message;
+    this.resolveResult = resolveResult;
+  }
+
+  onOpen(): void {
+    this.contentEl.createEl('p', { text: this.message });
+    const buttons = this.contentEl.createEl('div', { cls: 'modal-button-container' });
+    buttons.createEl('button', { text: '取消' }).addEventListener('click', () => this.close());
+    buttons.createEl('button', { cls: 'mod-warning', text: '确认' }).addEventListener('click', () => {
+      this.resolved = true;
+      this.resolveResult(true);
+      this.close();
+    });
+  }
+
+  onClose(): void {
+    if (!this.resolved) this.resolveResult(false);
+    this.contentEl.empty();
+  }
+}
 
 /**
  * 文件夹选择器：列出库内所有文件夹供模糊搜索选择。

@@ -4,6 +4,7 @@ import { getImageTaggingPlugin, getSafeImagePath } from '../utils/utils';
 import { Logger } from '../utils/logger';
 import { GALLERY_VIEW_TYPE } from '../constants';
 import { resolveScanFolderPaths, isFileInFolderPaths } from '../utils/folders';
+import { confirmWithModal } from './suggest-modals';
 
 // 图库视图类
 
@@ -233,20 +234,15 @@ export class GalleryView extends ItemView {
     statsSection.createEl('h4', { text: '统计信息' });
     const statsContainer = statsSection.createEl('div', { cls: 'stats-grid' });
     
-    statsContainer.createEl('div', { cls: 'stat-item' }).innerHTML = `
-      <div class="stat-value" id="total-media">0</div>
-      <div class="stat-label">总媒体数</div>
-    `;
-    
-    statsContainer.createEl('div', { cls: 'stat-item' }).innerHTML = `
-      <div class="stat-value" id="total-tags">0</div>
-      <div class="stat-label">标签总数</div>
-    `;
-    
-    statsContainer.createEl('div', { cls: 'stat-item' }).innerHTML = `
-      <div class="stat-value" id="total-categories-stat">0</div>
-      <div class="stat-label">分类数</div>
-    `;
+    const totalMediaStat = statsContainer.createEl('div', { cls: 'stat-item' });
+    totalMediaStat.createEl('div', { cls: 'stat-value', attr: { id: 'total-media' }, text: '0' });
+    totalMediaStat.createEl('div', { cls: 'stat-label', text: '总媒体数' });
+    const totalTagsStat = statsContainer.createEl('div', { cls: 'stat-item' });
+    totalTagsStat.createEl('div', { cls: 'stat-value', attr: { id: 'total-tags' }, text: '0' });
+    totalTagsStat.createEl('div', { cls: 'stat-label', text: '标签总数' });
+    const totalCategoriesStat = statsContainer.createEl('div', { cls: 'stat-item' });
+    totalCategoriesStat.createEl('div', { cls: 'stat-value', attr: { id: 'total-categories-stat' }, text: '0' });
+    totalCategoriesStat.createEl('div', { cls: 'stat-label', text: '分类数' });
     
     // 右侧主内容区
     const mainContent = contentContainer.createEl('div', { cls: 'gallery-main' });
@@ -259,14 +255,13 @@ export class GalleryView extends ItemView {
     
     // 排序下拉菜单
     const sortContainer = toolbarControls.createEl('div', { cls: 'sort-container' });
-    sortContainer.createEl('select', { 
-      cls: 'sort-select' 
-    }).innerHTML = `
-      <option value="date">按时间</option> 
-      <option value="name">按名称</option>
-      <option value="size">按大小</option>
-      <option value="tags">按标签数</option>
-    `;
+    const sortSelect = sortContainer.createEl('select', { cls: 'sort-select' });
+    [
+      ['date', '按时间'],
+      ['name', '按名称'],
+      ['size', '按大小'],
+      ['tags', '按标签数']
+    ].forEach(([value, text]) => sortSelect.createEl('option', { text, attr: { value } }));
     
     // 刷新按钮
     const refreshButton = toolbarControls.createEl('button', {
@@ -582,83 +577,62 @@ export class GalleryView extends ItemView {
       const imageCard = this.imageGrid.createEl('div', { cls: 'image-card' });
       imageCard.dataset.imageId = image.id;
       
-      // 生成标签HTML
-      let tagsHtml = '';
-      image.tags.slice(0, 3).forEach(tag => {
-        const colorIndex = this.getTagColorIndex(tag); // 使用哈希值选择颜色
-        const colors = ['blue', 'green', 'purple', 'yellow', 'red', 'pink', 'indigo', 'teal'];
-        const color = colors[colorIndex];
-        tagsHtml += `<span class="image-tag tag-color-${color}">${tag}</span>`;
-      });
-      
-      // 如果标签超过3个，显示更多
-      if (image.tags.length > 3) {
-        tagsHtml += `<span class="image-tag tag-more">+${image.tags.length - 3}</span>`;
-      }
-      
       // 使用安全的媒体路径获取方法
       const mediaPath = getSafeImagePath(this.app, image.path);
-      
-      // 根据媒体类型生成不同的预览元素
-      let previewElement = '';
-      if (image.type === 'image') {
-        previewElement = `<img src="${mediaPath}" alt="${image.title}" class="image-preview" loading="lazy" decoding="async">`;
-      } else if (image.type === 'video') {
-        previewElement = `<video src="${mediaPath}" class="image-preview" controls preload="metadata"></video>`;
-      } else if (image.type === 'audio') {
-        previewElement = `<audio src="${mediaPath}" class="image-preview" controls preload="metadata"></audio>`;
-      } else {
-        previewElement = `<img src="${mediaPath}" alt="${image.title}" class="image-preview" loading="lazy" decoding="async">`; // 默认作为图片处理
-      }
-      
+
       // 检查图片是否被选中
       const isSelected = this.selectedImages.includes(image.id);
       if (isSelected) {
         imageCard.addClass('selected');
       }
-      
-      imageCard.innerHTML = `
 
-        <div class="image-card-inner">
+      const cardInner = imageCard.createEl('div', { cls: 'image-card-inner' });
+      const previewContainer = cardInner.createEl('div', {
+        cls: 'image-preview-container',
+        attr: { 'data-media-path': mediaPath }
+      });
+      const previewClass = 'image-preview';
+      if (image.type === 'video') {
+        const video = previewContainer.createEl('video', { cls: previewClass, attr: { src: mediaPath, preload: 'metadata' } });
+        video.controls = true;
+      } else if (image.type === 'audio') {
+        const audio = previewContainer.createEl('audio', { cls: previewClass, attr: { src: mediaPath, preload: 'metadata' } });
+        audio.controls = true;
+      } else {
+        previewContainer.createEl('img', {
+          cls: previewClass,
+          attr: { src: mediaPath, alt: image.title, loading: 'lazy', decoding: 'async' }
+        });
+      }
 
-          <div class="image-preview-container" data-media-path="${mediaPath}">
+      const selectionIndicator = previewContainer.createEl('div', { cls: 'image-selection-indicator' });
+      if (isSelected) selectionIndicator.addClass('selected');
+      selectionIndicator.createEl('span', { cls: 'image-selection-check', text: '✓' });
 
-            ${previewElement}
-            
-            <!-- 选中状态指示器 -->
-            <div class="image-selection-indicator ${isSelected ? 'selected' : ''}">
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
-            </div>
+      const overlay = previewContainer.createEl('div', { cls: 'image-overlay' });
+      const overlayContent = overlay.createEl('div', { cls: 'image-overlay-content' });
+      overlayContent.createEl('h4', { cls: 'image-title', text: image.title });
+      const tagsContainer = overlayContent.createEl('div', { cls: 'image-tags-preview' });
+      const colors = ['blue', 'green', 'purple', 'yellow', 'red', 'pink', 'indigo', 'teal'];
+      image.tags.slice(0, 3).forEach(tag => {
+        const tagEl = tagsContainer.createEl('span', { cls: 'image-tag', text: tag });
+        tagEl.addClass(`tag-color-${colors[this.getTagColorIndex(tag)]}`);
+      });
+      if (image.tags.length > 3) {
+        tagsContainer.createEl('span', { cls: 'image-tag tag-more', text: `+${image.tags.length - 3}` });
+      }
 
-            <div class="image-overlay">
-
-              <div class="image-overlay-content">
-
-                <h4 class="image-title">${image.title}</h4>
-
-                <div class="image-tags-preview">${tagsHtml}</div>
-
-              </div>
-
-            </div>
-
-          </div>
-
-          <div class="image-info-bar">
-
-            <a href="#" class="file-path-link image-path-link" data-path="${image.path}">${image.path.split('/').pop()}</a>
-
-            <span class="image-size">${image.size}</span>
-
-            <span class="image-resolution">${image.type === 'image' ? '分辨率' : '时长'}: ${image.resolution}</span>
-
-          </div>
-
-        </div>
-
-      `;
+      const infoBar = cardInner.createEl('div', { cls: 'image-info-bar' });
+      const pathLink = infoBar.createEl('a', {
+        cls: 'file-path-link image-path-link',
+        text: image.path.split('/').pop() || image.path,
+        attr: { href: '#', 'data-path': image.path }
+      });
+      infoBar.createEl('span', { cls: 'image-size', text: image.size });
+      infoBar.createEl('span', {
+        cls: 'image-resolution',
+        text: `${image.type === 'image' ? '分辨率' : '时长'}: ${image.resolution}`
+      });
       
       // 添加点击事件处理多选和详情打开
       imageCard.addEventListener('click', (e) => {
@@ -1069,81 +1043,66 @@ export class GalleryView extends ItemView {
 
     const mediaPath = getSafeImagePath(this.app, image.path);
     
-    // 根据媒体类型生成不同的预览元素
-    let previewElement = '';
-    if (image.type === 'image') {
-      previewElement = `<img src="${mediaPath}" alt="${image.title}">`;
-    } else if (image.type === 'video') {
-      previewElement = `<video src="${mediaPath}" controls style="max-width: 100%; max-height: 70vh;"></video>`;
+    const backdrop = modal.createEl('div', { cls: 'modal-backdrop' });
+    const modalContent = modal.createEl('div', { cls: 'modal-content' });
+    const modalHeader = modalContent.createEl('div', { cls: 'modal-header' });
+    modalHeader.createEl('h3', { text: image.title });
+    modalHeader.createEl('span', { cls: 'modal-close-btn', text: '×' });
+    const modalBody = modalContent.createEl('div', { cls: 'modal-body' });
+    const previewContainer = modalBody.createEl('div', { cls: 'modal-image-preview' });
+    if (image.type === 'video') {
+      const video = previewContainer.createEl('video', { attr: { src: mediaPath } });
+      video.controls = true;
+      video.setCssStyles({ maxWidth: '100%', maxHeight: '70vh' });
     } else if (image.type === 'audio') {
-      previewElement = `<audio src="${mediaPath}" controls style="width: 100%;"></audio>`;
+      const audio = previewContainer.createEl('audio', { attr: { src: mediaPath } });
+      audio.controls = true;
+      audio.setCssStyles({ width: '100%' });
     } else {
-      previewElement = `<img src="${mediaPath}" alt="${image.title}">`; // 默认作为图片处理
+      previewContainer.createEl('img', { attr: { src: mediaPath, alt: image.title } });
     }
-    
-    modal.innerHTML = `
-      <div class="modal-backdrop"></div>
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3>${image.title}</h3>
-          <span class="modal-close-btn">&times;</span>
-        </div>
-        <div class="modal-body">
-          <div class="modal-image-preview">
-            ${previewElement}
-          </div>
-          <div class="modal-image-info">
-            <div class="info-section">
-              <label>标题</label>
-              <input type="text" class="title-input" value="${image.title}">
-            </div>
-            <div class="info-section">
-              <label>描述</label>
-              <textarea class="description-input">${image.description}</textarea>
-            </div>
-            <div class="info-section tags-section">
-              <label>标签</label>
-              <div class="current-tags">
-                ${image.tags.map(tag => `<span class="current-tag">${tag} <span class="remove-tag" data-tag="${tag}">×</span></span>`).join('')}
-              </div>
-              <div class="add-tag-container">
-                <input type="text" class="new-tag-input" placeholder="添加新标签...">
-                <button class="add-tag-btn">添加</button>
-              </div>
-              <div class="recent-tags-section">
-                <label>最近使用</label>
-                <div class="recent-tags-list">
-                  <!-- 最近使用的标签将在这里显示 -->
-                </div>
-              </div>
-            </div>
-            <div class="info-section file-info-section">
-
-              <label>文件信息</label>
-
-              <div class="file-info">
-
-                <p><strong>路径:</strong> <a href="#" class="file-path-link" data-path="${image.path}">${image.path}</a></p>
-
-                <p><strong>大小:</strong> ${image.size}</p>
-
-                <p><strong>格式:</strong> ${image.format}</p>
-
-                <p><strong>${image.type === 'image' ? '分辨率' : '时长'}:</strong> ${image.resolution}</p>
-
-                <p><strong>修改时间:</strong> ${new Date(image.lastModified).toLocaleString()}</p>
-
-              </div>
-
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="modal-save-btn">保存</button>
-          <button class="modal-cancel-btn">取消</button>
-        </div>
-      </div>
-    `;
+    const modalImageInfo = modalBody.createEl('div', { cls: 'modal-image-info' });
+    const titleSection = modalImageInfo.createEl('div', { cls: 'info-section' });
+    titleSection.createEl('label', { text: '标题' });
+    titleSection.createEl('input', { cls: 'title-input', attr: { type: 'text', value: image.title } });
+    const descriptionSection = modalImageInfo.createEl('div', { cls: 'info-section' });
+    descriptionSection.createEl('label', { text: '描述' });
+    descriptionSection.createEl('textarea', { cls: 'description-input', text: image.description });
+    const tagsSection = modalImageInfo.createEl('div', { cls: 'info-section tags-section' });
+    tagsSection.createEl('label', { text: '标签' });
+    const currentTags = tagsSection.createEl('div', { cls: 'current-tags' });
+    image.tags.forEach(tag => {
+      const currentTag = currentTags.createEl('span', { cls: 'current-tag' });
+      currentTag.appendText(tag);
+      currentTag.createEl('span', { cls: 'remove-tag', text: '×', attr: { 'data-tag': tag } });
+    });
+    const addTagContainer = tagsSection.createEl('div', { cls: 'add-tag-container' });
+    addTagContainer.createEl('input', { cls: 'new-tag-input', attr: { type: 'text', placeholder: '添加新标签...' } });
+    addTagContainer.createEl('button', { cls: 'add-tag-btn', text: '添加' });
+    const recentSection = tagsSection.createEl('div', { cls: 'recent-tags-section' });
+    recentSection.createEl('label', { text: '最近使用' });
+    recentSection.createEl('div', { cls: 'recent-tags-list' });
+    const fileInfoSection = modalImageInfo.createEl('div', { cls: 'info-section file-info-section' });
+    fileInfoSection.createEl('label', { text: '文件信息' });
+    const fileInfo = fileInfoSection.createEl('div', { cls: 'file-info' });
+    const pathRow = fileInfo.createEl('p');
+    pathRow.createEl('strong', { text: '路径:' });
+    pathRow.createEl('a', { cls: 'file-path-link', text: image.path, attr: { href: '#', 'data-path': image.path } });
+    const sizeRow = fileInfo.createEl('p');
+    sizeRow.createEl('strong', { text: '大小:' });
+    sizeRow.appendText(` ${image.size}`);
+    const formatRow = fileInfo.createEl('p');
+    formatRow.createEl('strong', { text: '格式:' });
+    formatRow.appendText(` ${image.format}`);
+    const resolutionRow = fileInfo.createEl('p');
+    resolutionRow.createEl('strong', { text: `${image.type === 'image' ? '分辨率' : '时长'}:` });
+    resolutionRow.appendText(` ${image.resolution}`);
+    const modifiedRow = fileInfo.createEl('p');
+    modifiedRow.createEl('strong', { text: '修改时间:' });
+    modifiedRow.appendText(` ${new Date(image.lastModified).toLocaleString()}`);
+    const modalFooter = modalContent.createEl('div', { cls: 'modal-footer' });
+    modalFooter.createEl('button', { cls: 'modal-save-btn', text: '保存' });
+    modalFooter.createEl('button', { cls: 'modal-cancel-btn', text: '取消' });
     
     // 添加事件处理
     const closeBtn = modal.querySelector('.modal-close-btn');
@@ -1155,7 +1114,7 @@ export class GalleryView extends ItemView {
     
     closeBtn?.addEventListener('click', closeModal);
     cancelBtn?.addEventListener('click', closeModal);
-    modal.querySelector('.modal-backdrop')?.addEventListener('click', closeModal);
+    backdrop.addEventListener('click', closeModal);
     
     // 添加标签功能
     const addTagBtn = modal.querySelector('.add-tag-btn');
@@ -1168,9 +1127,7 @@ export class GalleryView extends ItemView {
     const recentTags = this.imageDataManager.getRecentTags();
     if (recentTags.length > 0) {
       recentTags.forEach(tag => {
-        const recentTagEl = document.createElement('span');
-        recentTagEl.className = 'recent-tag-item';
-        recentTagEl.textContent = tag;
+        const recentTagEl = recentTagsContainer.createEl('span', { cls: 'recent-tag-item', text: tag });
         
         // 检查当前图片是否已包含此最近使用的标签，如果是，则标记为选中状态
         if (image.tags.includes(tag)) {
@@ -1183,12 +1140,12 @@ export class GalleryView extends ItemView {
             image.tags.push(tag);
             
             // 更新当前标签显示
-            const newTagEl = document.createElement('span');
-            newTagEl.className = 'current-tag';
-            newTagEl.innerHTML = `${tag} <span class="remove-tag" data-tag="${tag}">×</span>`;
+            const newTagEl = currentTagsContainer?.createEl('span', { cls: 'current-tag' });
+            if (!newTagEl) return;
+            newTagEl.appendText(tag);
+            const removeTagEl = newTagEl.createEl('span', { cls: 'remove-tag', text: '×', attr: { 'data-tag': tag } });
             
-            const removeBtn = newTagEl.querySelector('.remove-tag');
-            removeBtn?.addEventListener('click', (e) => {
+            removeTagEl.addEventListener('click', (e) => {
               const tagValue = (e.target as HTMLElement).dataset.tag;
               if (tagValue) {
                 image.tags = image.tags.filter(t => t !== tagValue);
@@ -1204,8 +1161,6 @@ export class GalleryView extends ItemView {
                 }
               }
             });
-            
-            currentTagsContainer?.appendChild(newTagEl);
             
             // 更新UI状态
             recentTagEl.classList.add('selected');
@@ -1242,12 +1197,12 @@ export class GalleryView extends ItemView {
         if (!image.tags.includes(newTag)) {
           image.tags.push(newTag);
           
-          const newTagEl = document.createElement('span');
-          newTagEl.className = 'current-tag';
-          newTagEl.innerHTML = `${newTag} <span class="remove-tag" data-tag="${newTag}">×</span>`;
+          const newTagEl = currentTagsContainer?.createEl('span', { cls: 'current-tag' });
+          if (!newTagEl) return;
+          newTagEl.appendText(newTag);
+          const removeTagEl = newTagEl.createEl('span', { cls: 'remove-tag', text: '×', attr: { 'data-tag': newTag } });
           
-          const removeBtn = newTagEl.querySelector('.remove-tag');
-          removeBtn?.addEventListener('click', (e) => {
+          removeTagEl.addEventListener('click', (e) => {
             const tagValue = (e.target as HTMLElement).dataset.tag;
             if (tagValue) {
               image.tags = image.tags.filter(t => t !== tagValue);
@@ -1255,7 +1210,6 @@ export class GalleryView extends ItemView {
             }
           });
           
-          currentTagsContainer?.appendChild(newTagEl);
         }
         newTagInput.value = '';
       }
@@ -1387,7 +1341,7 @@ export class GalleryView extends ItemView {
 
         e.stopPropagation(); // 阻止点击事件冒泡到li元素
 
-        this.deleteCategory(category, parent);
+        void this.deleteCategory(category, parent);
 
       });
 
@@ -1436,9 +1390,8 @@ export class GalleryView extends ItemView {
     new Notice(`已添加分类 "${newCategory}"`);
   }
 
-  private deleteCategory(category: string, categoriesList: HTMLElement) {
-    // 确认删除
-    if (confirm(`确定要删除分类 "${category}" 吗？`)) {
+  private async deleteCategory(category: string, categoriesList: HTMLElement) {
+    if (await confirmWithModal(this.app, `确定要删除分类 "${category}" 吗？`)) {
       // 从数组中移除分类
       this.categories = this.categories.filter(cat => cat !== category);
       
@@ -1584,16 +1537,15 @@ export class GalleryView extends ItemView {
           }
           
           // 添加工具栏内容
-          batchToolbar.innerHTML = `
-            <div class="batch-toolbar-content">
-              <span class="batch-selection-info">已选中 ${this.selectedImages.length} 个项目</span>
-              <div class="batch-operation-controls">
-                <button class="batch-add-tag-btn">添加标签</button>
-                <button class="batch-remove-tag-btn">删除标签</button>
-                <button class="batch-clear-selection">清除选择</button>
-              </div>
-            </div>
-          `;
+          const toolbarContent = batchToolbar.createEl('div', { cls: 'batch-toolbar-content' });
+          toolbarContent.createEl('span', {
+            cls: 'batch-selection-info',
+            text: `已选中 ${this.selectedImages.length} 个项目`
+          });
+          const operationControls = toolbarContent.createEl('div', { cls: 'batch-operation-controls' });
+          operationControls.createEl('button', { cls: 'batch-add-tag-btn', text: '添加标签' });
+          operationControls.createEl('button', { cls: 'batch-remove-tag-btn', text: '删除标签' });
+          operationControls.createEl('button', { cls: 'batch-clear-selection', text: '清除选择' });
           
           // 添加事件监听器
           const addTagBtn = batchToolbar.querySelector('.batch-add-tag-btn');
@@ -1637,32 +1589,26 @@ export class GalleryView extends ItemView {
     const modal = this.containerEl.createEl('div', { cls: 'batch-tag-modal' });
     
     const operationText = operation === 'add' ? '添加' : '删除';
-    modal.innerHTML = `
-      <div class="modal-backdrop"></div>
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3>批量${operationText}标签</h3>
-          <span class="modal-close-btn">&times;</span>
-        </div>
-        <div class="modal-body">
-          <div class="batch-tag-operation">
-            <p>选中的项目: ${this.selectedImages.length} 个</p>
-            <div class="tag-input-section">
-              <label for="batch-tag-input">${operationText}标签:</label>
-              <input type="text" id="batch-tag-input" class="batch-tag-input" placeholder="输入标签，多个标签用逗号分隔">
-              <div class="recent-tags-section">
-                <label>热门标签:</label>
-                <div class="recent-tags-list" id="batch-recent-tags-list"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="modal-cancel-btn">取消</button>
-          <button class="modal-confirm-btn">${operationText}</button>
-        </div>
-      </div>
-    `;
+    const backdrop = modal.createEl('div', { cls: 'modal-backdrop' });
+    const modalContent = modal.createEl('div', { cls: 'modal-content' });
+    const modalHeader = modalContent.createEl('div', { cls: 'modal-header' });
+    modalHeader.createEl('h3', { text: `批量${operationText}标签` });
+    modalHeader.createEl('span', { cls: 'modal-close-btn', text: '×' });
+    const modalBody = modalContent.createEl('div', { cls: 'modal-body' });
+    const operationContainer = modalBody.createEl('div', { cls: 'batch-tag-operation' });
+    operationContainer.createEl('p', { text: `选中的项目: ${this.selectedImages.length} 个` });
+    const tagInputSection = operationContainer.createEl('div', { cls: 'tag-input-section' });
+    tagInputSection.createEl('label', { text: `${operationText}标签:`, attr: { for: 'batch-tag-input' } });
+    tagInputSection.createEl('input', {
+      cls: 'batch-tag-input',
+      attr: { id: 'batch-tag-input', type: 'text', placeholder: '输入标签，多个标签用逗号分隔' }
+    });
+    const recentSection = tagInputSection.createEl('div', { cls: 'recent-tags-section' });
+    recentSection.createEl('label', { text: '热门标签:' });
+    recentSection.createEl('div', { cls: 'recent-tags-list', attr: { id: 'batch-recent-tags-list' } });
+    const modalFooter = modalContent.createEl('div', { cls: 'modal-footer' });
+    modalFooter.createEl('button', { cls: 'modal-cancel-btn', text: '取消' });
+    modalFooter.createEl('button', { cls: 'modal-confirm-btn', text: operationText });
     
     // 添加事件监听器
     const closeBtn = modal.querySelector('.modal-close-btn');
@@ -1703,7 +1649,7 @@ export class GalleryView extends ItemView {
     
     closeBtn?.addEventListener('click', closeModal);
     cancelBtn?.addEventListener('click', closeModal);
-    modal.querySelector('.modal-backdrop')?.addEventListener('click', closeModal);
+    backdrop.addEventListener('click', closeModal);
     
     // 确认按钮事件
     if (confirmBtn) {
@@ -1791,7 +1737,7 @@ export class GalleryView extends ItemView {
         
         // 设置一个合理的超时时间
         const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Timeout getting image dimensions')), 5000);
+          window.setTimeout(() => reject(new Error('Timeout getting image dimensions')), 5000);
         });
         
         const dimensionPromise = new Promise<{width: number, height: number}>((resolve, reject) => {
@@ -1839,22 +1785,20 @@ export class GalleryView extends ItemView {
     const totalPages = this.totalPages;
     const cur = Math.max(1, Math.min(this.totalPages, this.currentPage));
 
-    const pageBtn = (p: number) =>
-      `<button type="button" class="pagination-btn pagination-num${p === cur ? ' active' : ''}" data-page="${p}">${p}</button>`;
-    const pageButtons: string[] = [];
+    const pageButtons: Array<number | 'ellipsis'> = [];
     if (totalPages <= 7) {
-      for (let p = 1; p <= totalPages; p++) pageButtons.push(pageBtn(p));
+      for (let p = 1; p <= totalPages; p++) pageButtons.push(p);
     } else {
       const winStart = Math.max(1, cur - 2);
       const winEnd = Math.min(totalPages, cur + 2);
       if (winStart > 1) {
-        pageButtons.push(pageBtn(1));
-        if (winStart > 2) pageButtons.push('<span class="pagination-ellipsis">…</span>');
+        pageButtons.push(1);
+        if (winStart > 2) pageButtons.push('ellipsis');
       }
-      for (let p = winStart; p <= winEnd; p++) pageButtons.push(pageBtn(p));
+      for (let p = winStart; p <= winEnd; p++) pageButtons.push(p);
       if (winEnd < totalPages) {
-        if (winEnd < totalPages - 1) pageButtons.push('<span class="pagination-ellipsis">…</span>');
-        pageButtons.push(pageBtn(totalPages));
+        if (winEnd < totalPages - 1) pageButtons.push('ellipsis');
+        pageButtons.push(totalPages);
       }
     }
 
@@ -1864,34 +1808,37 @@ export class GalleryView extends ItemView {
       return;
     }
 
-    this.paginationEl.innerHTML = `
-      <span class="pagination-info">共 ${total} 项 · 第 ${cur} / ${totalPages} 页</span>
-      <div class="pagination-controls">
-        <button type="button" class="pagination-btn pagination-prev"${cur <= 1 ? ' disabled' : ''}>&lsaquo;</button>
-        ${pageButtons.join('')}
-        <button type="button" class="pagination-btn pagination-next"${cur >= totalPages ? ' disabled' : ''}>&rsaquo;</button>
-      </div>
-      <span class="pagination-size">每页
-        <select class="pagination-size-select">
-          ${[24, 60, 120].map(s => `<option value="${s}"${s === this.pageSize ? ' selected' : ''}>${s}</option>`).join('')}
-        </select> 项
-      </span>
-    `;
-
-    const prevBtn = this.paginationEl.querySelector('.pagination-prev') as HTMLButtonElement;
-    const nextBtn = this.paginationEl.querySelector('.pagination-next') as HTMLButtonElement;
-    prevBtn?.addEventListener('click', () => this.goToPage(cur - 1));
-    nextBtn?.addEventListener('click', () => this.goToPage(cur + 1));
-
-    this.paginationEl.querySelectorAll('.pagination-num').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const p = Number((btn as HTMLElement).dataset.page);
-        if (!isNaN(p)) this.goToPage(p);
+    this.paginationEl.createEl('span', { cls: 'pagination-info', text: `共 ${total} 项 · 第 ${cur} / ${totalPages} 页` });
+    const controls = this.paginationEl.createEl('div', { cls: 'pagination-controls' });
+    const prevBtn = controls.createEl('button', { cls: 'pagination-btn pagination-prev', text: '‹', attr: { type: 'button' } });
+    prevBtn.disabled = cur <= 1;
+    prevBtn.addEventListener('click', () => this.goToPage(cur - 1));
+    pageButtons.forEach(page => {
+      if (page === 'ellipsis') {
+        controls.createEl('span', { cls: 'pagination-ellipsis', text: '…' });
+        return;
+      }
+      const pageButton = controls.createEl('button', {
+        cls: `pagination-btn pagination-num${page === cur ? ' active' : ''}`,
+        text: String(page),
+        attr: { type: 'button', 'data-page': String(page) }
       });
+      pageButton.addEventListener('click', () => this.goToPage(page));
     });
+    const nextBtn = controls.createEl('button', { cls: 'pagination-btn pagination-next', text: '›', attr: { type: 'button' } });
+    nextBtn.disabled = cur >= totalPages;
+    nextBtn.addEventListener('click', () => this.goToPage(cur + 1));
 
-    const sizeSelect = this.paginationEl.querySelector('.pagination-size-select') as HTMLSelectElement;
-    sizeSelect?.addEventListener('change', () => {
+    const sizeContainer = this.paginationEl.createEl('span', { cls: 'pagination-size' });
+    sizeContainer.appendText('每页');
+    const sizeSelect = sizeContainer.createEl('select', { cls: 'pagination-size-select' });
+    [24, 60, 120].forEach(size => sizeSelect.createEl('option', {
+      text: String(size),
+      attr: { value: String(size) }
+    }));
+    sizeSelect.value = String(this.pageSize);
+    sizeContainer.appendText(' 项');
+    sizeSelect.addEventListener('change', () => {
       const v = parseInt(sizeSelect.value, 10);
       if (!isNaN(v) && v > 0) {
         this.pageSize = v;
