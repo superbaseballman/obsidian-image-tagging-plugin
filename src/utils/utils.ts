@@ -71,6 +71,10 @@ export interface ImageTaggingPlugin {
   loadDataFromFile(): Promise<void>;
   saveSettings(): Promise<void>;
   ensureImageDataForFile(file: TFile): Promise<MediaData | undefined>;
+  /** 取走并清空「已确认删除」的媒体记录（供图库刷新时展示） */
+  consumeRemovedRecords(): MediaData[];
+  /** 取走并清空仍在删除宽限期内的媒体记录（调用前应先完成一次全库扫描） */
+  consumePendingRemovedRecords(): MediaData[];
 }
 
 /** 插件在 manifest 中注册的 id（必须与 manifest.json 的 id 一致） */

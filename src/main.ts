@@ -33,6 +33,9 @@ export default class ImageTaggingPlugin extends Plugin {
   // 删除宽限期内的记录（key 为记录 id）：外部改名常被拆分为 delete + create，
   // 期间若出现内容 MD5 相同的文件则认领该记录，保证 id / 标签 / 描述不丢失。
   private pendingDeleted = new Map<string, { record: MediaData; timer: number }>();
+  // 自上次图库提示以来「已被移除」的记录：文件删除后记录会先从数据表移除，
+  // cleanupInvalidImages 无法再发现它们，故在此缓存，供图库刷新时统一展示。
+  private removedRecords: MediaData[] = [];
 
   async onload() {
     // 先用默认设置同步初始化，避免插件启用被设置读取（磁盘 I/O）阻塞；
@@ -604,11 +607,47 @@ export default class ImageTaggingPlugin extends Plugin {
 
     const timer = window.setTimeout(() => {
       this.pendingDeleted.delete(imageData.id);
+      // 宽限期结束仍未认领 = 确认删除：缓存起来，供图库刷新时提示
+      this.trackRemovedRecord(imageData);
       void this.saveDataToFile();
       Logger.debug(`已确认删除媒体数据: ${deletedPath}`);
     }, PENDING_DELETE_GRACE_MS);
 
     this.pendingDeleted.set(imageData.id, { record: imageData, timer });
+  }
+
+  /** 缓存一条已被移除的媒体记录（供图库刷新时提示），按 id 去重 */
+  private trackRemovedRecord(record: MediaData): void {
+    if (!this.removedRecords.some(item => item.id === record.id)) {
+      this.removedRecords.push(record);
+    }
+  }
+
+  /**
+   * 取走并清空「已确认删除」的记录（宽限期结束后仍未认领的记录）。
+   * 取走后再次刷新不会重复提示。
+   */
+  consumeRemovedRecords(): MediaData[] {
+    const removed = this.removedRecords;
+    this.removedRecords = [];
+    return removed;
+  }
+
+  /**
+   * 取走并清空「仍在删除宽限期内」的记录。
+   * 调用前应先完成一次全库扫描：扫描会按内容 MD5 认领属于改名 / 移动的记录，
+   * 因此调用时仍留在宽限期的记录，其原文件已确认不存在，可视为已删除。
+   */
+  consumePendingRemovedRecords(): MediaData[] {
+    const removed: MediaData[] = [];
+    for (const [id, entry] of this.pendingDeleted) {
+      window.clearTimeout(entry.timer);
+      if (!removed.some(item => item.id === id)) {
+        removed.push(entry.record);
+      }
+    }
+    this.pendingDeleted.clear();
+    return removed;
   }
 
   /**
@@ -1238,7 +1277,8 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
     const removedData = this.imageDataManager.cleanupInvalidImages(this.app, this.settings.scanFolderPath, this.settings.scanMultipleFolderPaths);
 
-
+    // 记录已被移除，供图库刷新时提示（避免只在设置面板看到数字）
+    removedData.forEach(record => this.trackRemovedRecord(record));
 
     await this.saveDataToFile();
 

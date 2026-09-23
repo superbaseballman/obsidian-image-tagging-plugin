@@ -1091,6 +1091,18 @@
   display: none;
 }
 
+/* 未选中时只显示空心方框，不显示勾选标记 */
+.image-selection-indicator .image-selection-check {
+  display: none;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text-on-accent);
+}
+
+.image-selection-indicator.selected .image-selection-check {
+  display: block;
+}
+
 /* 选中的图片卡片样式 */
 .image-card.selected {
   border: 2px solid var(--interactive-accent);

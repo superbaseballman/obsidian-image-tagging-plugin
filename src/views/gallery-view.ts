@@ -386,6 +386,21 @@ export class GalleryView extends ItemView {
     // 清理无效媒体数据（删除仍不存在或不在指定扫描路径内的媒体记录）
     const removedData = imageDataManager.cleanupInvalidImages(this.app, this.settings.scanFolderPath, this.settings.scanMultipleFolderPaths);
 
+    // 补上已从数据表移除、cleanupInvalidImages 无法再发现的记录：
+    // 文件被删除时记录会先进入删除宽限期（为兼容外部改名而延迟确认），
+    // 此时数据表中已无该记录，只有插件侧缓存/宽限期内还留着，这里一并汇总后展示。
+    // 注意：必须在 scanImagesBasedOnSettings() 之后调用，扫描已按内容 MD5 认领改名/移动的记录。
+    const seenIds = new Set(removedData.map(item => item.id));
+    const extraRemoved = [
+      ...plugin.consumeRemovedRecords(),
+      ...plugin.consumePendingRemovedRecords()
+    ];
+    for (const record of extraRemoved) {
+      if (seenIds.has(record.id)) continue;
+      seenIds.add(record.id);
+      removedData.push(record);
+    }
+
     // 确保在扫描后再次使用插件实例的数据管理器
     this.imageDataManager = plugin.imageDataManager;
 
