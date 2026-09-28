@@ -8,7 +8,7 @@ import { getImageResolutionWithCache, getImageFileFromPath, getMediaDurationWith
 import { getFileMd5 } from './utils/file-hash';
 import { SqliteStore } from './services/sqlite-store';
 import { Logger, LogLevel } from './utils/logger';
-import { isDesktopApp, openFileWithDefaultApp, getElectronDialog, getNodeFs, getPathSeparator, getVaultBasePath } from './utils/platform';
+import { isDesktopApp, openFileWithDefaultApp } from './utils/platform';
 import { GALLERY_VIEW_TYPE, IMAGE_INFO_VIEW_TYPE, DEFAULT_JSON_STORAGE_PATH, DEFAULT_SUPPORTED_FORMATS, DEFAULT_CATEGORIES, SQLITE_STORAGE_PATH } from './constants';
 import { isFileInScanFolders, normalizeFolderPath } from './utils/folders';
 
@@ -931,31 +931,12 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
   /**
    * 导出全部标签数据为 JSON。
-   * 桌面端：走系统「另存为」对话框；移动端：写入库内文件（Obsidian 沙箱内无系统文件选择器）。
+   * 统一写入库内文件（走 Obsidian Vault API），不依赖 Node 的 fs 模块，
+   * 桌面端与移动端行为一致，避免任意绝对路径读写带来的安全风险。
    */
   async exportJson(): Promise<void> {
     try {
       const json = this.imageDataManager.exportToJSON();
-      const [dialog, fs] = await Promise.all([getElectronDialog(), getNodeFs()]);
-
-      if (dialog && fs) {
-        const basePath = getVaultBasePath(this.app);
-        const defaultPath = basePath
-          ? `${basePath}${await getPathSeparator()}image-tags-export.json`
-          : 'image-tags-export.json';
-        const result = await dialog.showSaveDialog({
-          title: '导出 JSON 数据',
-          defaultPath,
-          filters: [{ name: 'JSON 文件', extensions: ['json'] }]
-        });
-        if (result.canceled || !result.filePath) return;
-
-        fs.writeFileSync(result.filePath, json, 'utf8');
-        new Notice(`JSON 数据已导出：${result.filePath}`);
-        return;
-      }
-
-      // 移动端 / 无 Electron 能力：导出到库根目录下的文件
       const targetPath = await this.createUniqueVaultPath('image-tags-export.json');
       await this.app.vault.adapter.write(targetPath, json);
       new Notice(`JSON 数据已导出到库内文件：${targetPath}`);
@@ -967,26 +948,11 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
   /**
    * 导入 JSON 数据。
-   * 桌面端：系统「打开文件」对话框；移动端：库内文件选择器。
+   * 统一从库内文件选择（走 Obsidian Vault API），不依赖 Node 的 fs 模块，
+   * 桌面端与移动端行为一致，避免任意绝对路径读写带来的安全风险。
    */
   async importJsonFromDialog(): Promise<void> {
     try {
-      const [dialog, fs] = await Promise.all([getElectronDialog(), getNodeFs()]);
-
-      if (dialog && fs) {
-        const result = await dialog.showOpenDialog({
-          title: '选择 JSON 数据',
-          properties: ['openFile'],
-          filters: [{ name: 'JSON 文件', extensions: ['json'] }]
-        });
-        if (result.canceled || result.filePaths.length === 0) return;
-
-        const jsonData = fs.readFileSync(result.filePaths[0], 'utf8') as string;
-        await this.applyImportedJson(jsonData);
-        return;
-      }
-
-      // 移动端 / 无 Electron 能力：从库内挑选 JSON 文件
       new VaultFileSuggestModal(this.app, 'json', async (file) => {
         try {
           const jsonData = await this.app.vault.read(file);
@@ -1300,7 +1266,7 @@ class ImageTaggingSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('旧 JSON 数据路径')
-      .setDesc(`当前数据存储在 ${this.app.vault.configDir}/image-tags.db，可从本地文件选择旧 JSON 进行迁移`)
+      .setDesc(`当前数据存储在 ${this.app.vault.configDir}/image-tags.db，可从库内选择旧 JSON 进行迁移（外部文件请先放入库中）`)
       .addButton(button => button
         .setButtonText('选择并迁移')
         .onClick(async () => {
