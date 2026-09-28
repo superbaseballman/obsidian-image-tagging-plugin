@@ -75,6 +75,8 @@ export interface ImageTaggingPlugin {
   consumeRemovedRecords(): MediaData[];
   /** 取走并清空仍在删除宽限期内的媒体记录（调用前应先完成一次全库扫描） */
   consumePendingRemovedRecords(): MediaData[];
+  /** 取走并清空自上次提示以来新增 / 内容更新的媒体记录（供扫描提示时计入） */
+  consumeAddedRecords(): MediaData[];
 }
 
 /** 插件在 manifest 中注册的 id（必须与 manifest.json 的 id 一致） */

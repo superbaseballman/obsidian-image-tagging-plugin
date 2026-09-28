@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - 增加用户进行分享图库等操作的功能
 
+## [2.2.10] 
+### Fixed - 2026-09-28
+- 修复当加入新的媒体时通知显示无新的媒体文件的bug
+
 ## [2.2.9] 
 ### Fixed - 2026-09-23
 - class="image-selection-indicator"在未选择时不要打勾

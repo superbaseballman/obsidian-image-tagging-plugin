@@ -1,7 +1,7 @@
 {
   "id": "image-tagging",
   "name": "Image Tagging",
-  "version": "2.2.9",
+  "version": "2.2.10",
   "minAppVersion": "1.7.2",
   "description": "Add tag management functionality for media attachments, store data in SQLite, and use file MD5 as the record identifier.",
   "author": "superbasballman",

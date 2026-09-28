@@ -381,7 +381,12 @@ export class GalleryView extends ItemView {
 
     // 先扫描：让改名 / 移动后的新文件按内容 MD5 继承残留记录（id / 标签 / 描述），
     // 再清理真正失效的记录，避免“先删后建”导致原标签丢失。
-    await this.scanImagesBasedOnSettings();
+    // 扫描阶段只弹「开始扫描」，结果与清理情况合并到「扫描完成」一条通知里。
+    const addedCount = await this.scanImagesBasedOnSettings();
+    if (addedCount === null) {
+      new Notice('扫描媒体文件失败，无法获取插件数据管理器');
+      return;
+    }
 
     // 清理无效媒体数据（删除仍不存在或不在指定扫描路径内的媒体记录）
     const removedData = imageDataManager.cleanupInvalidImages(this.app, this.settings.scanFolderPath, this.settings.scanMultipleFolderPaths);
@@ -414,20 +419,21 @@ export class GalleryView extends ItemView {
       new DeletedMediaModal(this.app, removedData).open();
     }
 
-    // 获取最终的媒体计数用于通知
+    // 扫描结果 + 清理情况合并为「扫描完成」通知
     const finalCount = imageDataManager.getAllImageData().length;
-    new Notice(`图库已刷新，清理了 ${removedData.length} 个无效媒体记录，当前共有 ${finalCount} 个媒体项目`);
+    const addedText = addedCount > 0 ? `新增了 ${addedCount} 个媒体记录` : '没有发现新的媒体文件';
+    new Notice(`扫描完成！${addedText}，清理了 ${removedData.length} 个无效媒体记录，当前共有 ${finalCount} 个媒体项目`);
   }
 
-  private async scanImagesBasedOnSettings() {
+  /** 扫描媒体文件并落盘，返回本次新增的记录数；无法获取数据管理器时返回 null（调用方负责提示）。 */
+  private async scanImagesBasedOnSettings(): Promise<number | null> {
 
     // 获取插件实例
     const plugin = getImageTaggingPlugin(this.app);
     
     if (!plugin || !plugin.imageDataManager) {
-      new Notice('无法获取插件数据管理器，扫描失败');
       console.error('Failed to get plugin or imageDataManager in scanImagesBasedOnSettings');
-      return;
+      return null;
     }
 
     // 使用插件实例的数据管理器
@@ -447,6 +453,8 @@ export class GalleryView extends ItemView {
     }
 
     let mediaCount = 0;
+    // 已计入本次提示的记录 id（按 id 去重，避免与插件侧新增缓存重复计数）
+    const countedIds = new Set<string>();
 
     // 获取当前支持的媒体格式
     const supportedFormats = this.settings.supportedFormats || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'mp4', 'avi', 'mov', 'mkv', 'webm', 'mp3', 'wav', 'flac', 'aac', 'ogg'];
@@ -461,18 +469,27 @@ export class GalleryView extends ItemView {
           const ensured = await plugin.ensureImageDataForFile(file);
           if (ensured) {
             mediaCount++;
+            countedIds.add(ensured.id);
           }
         }
       }
     }
 
+    // 合并「已由 create 事件抢先登记」的新增记录：新文件加入库时插件会立即建档并落盘，
+    // 本次扫描因路径已有记录而看不到它们，若不合并就会误报「没有发现新的媒体文件」。
+    for (const record of plugin.consumeAddedRecords()) {
+      if (countedIds.has(record.id)) continue;
+      if (!imageDataManager.getImageData(record.id)) continue; // 已被删除 / 合并
+      countedIds.add(record.id);
+      mediaCount++;
+    }
+
     if (mediaCount > 0) {
       // 直接使用插件实例保存数据，确保数据一致性
       await plugin.saveDataToFile();
-      new Notice(`扫描完成！新增了 ${mediaCount} 个媒体记录`);
-    } else {
-      new Notice('扫描完成！没有发现新的媒体文件');
     }
+
+    return mediaCount;
   }
 
   private loadData() {

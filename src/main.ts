@@ -36,6 +36,10 @@ export default class ImageTaggingPlugin extends Plugin {
   // 自上次图库提示以来「已被移除」的记录：文件删除后记录会先从数据表移除，
   // cleanupInvalidImages 无法再发现它们，故在此缓存，供图库刷新时统一展示。
   private removedRecords: MediaData[] = [];
+  // 自上次提示以来「新增 / 内容更新」的记录：新文件出现时 create 事件会立即建档并落盘，
+  // 之后的图库扫描因路径已有记录而看不到它们，故在此缓存，供扫描提示时一并计入，
+  // 避免「刚加入的新媒体」被误报为「没有发现新的媒体文件」。
+  private addedRecords: MediaData[] = [];
 
   async onload() {
     // 先用默认设置同步初始化，避免插件启用被设置读取（磁盘 I/O）阻塞；
@@ -179,10 +183,8 @@ export default class ImageTaggingPlugin extends Plugin {
     );
 
 
-    // 在布局准备就绪后设置编辑器图片点击处理程序
-    this.app.workspace.onLayoutReady(() => {
-      this.setupEditorImageClickHandler();
-    });
+    // 编辑器内的图片不响应单击：单击图片交还给 Obsidian 默认行为，
+    // 需要查看信息时请使用图片右键菜单中的「查看图片信息」。
 
     // 在编辑器的原生右键菜单中加入“查看图片信息”项
     this.registerEvent(
@@ -317,56 +319,6 @@ export default class ImageTaggingPlugin extends Plugin {
       } else {
         window.setTimeout(resolve, 0);
       }
-    });
-  }
-
-  /**
-   * 设置编辑器中的图片点击处理程序
-   */
-  private setupEditorImageClickHandler() {
-    // 监听编辑器内容区域的点击事件
-    const clickEventHandler = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      // 检查点击的是否为图片元素
-      if (target.tagName === 'IMG') {
-        event.preventDefault(); // 阻止默认行为
-        
-        let imagePath = '';
-        // 对于 <img> 标签
-        imagePath = target.getAttribute('src') || '';
-        
-        if (imagePath) {
-          // 尝试从路径获取实际的文件对象
-          const file = getImageFileFromPath(imagePath, this.app);
-          if (file && this.isSupportedImageFile(file)) {
-            // 打开图片信息面板并显示该图片的信息
-            this.openImageInfoPanel();
-            this.updateImageInfoPanel(file);
-          }
-        }
-      }
-    };
-
-    // 为所有当前和未来的编辑器实例添加事件监听器
-    this.app.workspace.onLayoutReady(() => {
-      // 监听新打开的编辑器
-      this.registerEvent(
-        this.app.workspace.on('active-leaf-change', (leaf) => {
-          if (leaf && leaf.view && (leaf.view as any).contentEl) {
-            const viewContentEl = (leaf.view as any).contentEl as HTMLElement;
-            viewContentEl.removeEventListener('click', clickEventHandler);
-            viewContentEl.addEventListener('click', clickEventHandler);
-          }
-        })
-      );
-      
-      // 为当前已打开的编辑器添加监听器
-      this.app.workspace.iterateAllLeaves((leaf) => {
-        if (leaf.view && (leaf.view as any).contentEl) {
-          const viewContentEl = (leaf.view as any).contentEl as HTMLElement;
-          viewContentEl.addEventListener('click', clickEventHandler);
-        }
-      });
     });
   }
 
@@ -514,7 +466,9 @@ export default class ImageTaggingPlugin extends Plugin {
 
       const updated: MediaData = { ...existing, id: currentId, path: file.path };
       this.imageDataManager.addImageData(updated);
-      return this.imageDataManager.getImageDataByPath(file.path) || updated;
+      const stored = this.imageDataManager.getImageDataByPath(file.path) || updated;
+      this.trackAddedRecord(stored);
+      return stored;
     }
 
     // 路径上无记录：先检查删除宽限期（Obsidian 常把外部改名拆成 delete + create，
@@ -588,7 +542,9 @@ export default class ImageTaggingPlugin extends Plugin {
     Logger.warn(`[新建记录] ${file.path} 未找到可继承/认领的同内容记录，将创建新记录 (md5=${currentId})。若此文件由改名产生且原记录仍存在，请反馈此日志。`);
     const created = await this.createDefaultImageData(file, currentId);
     this.imageDataManager.addImageData(created);
-    return this.imageDataManager.getImageDataByPath(file.path) || created;
+    const stored = this.imageDataManager.getImageDataByPath(file.path) || created;
+    this.trackAddedRecord(stored);
+    return stored;
   }
 
   // ===== 删除宽限期与内容认领：让“纯改名”保留原 id 与标签 =====
@@ -621,6 +577,26 @@ export default class ImageTaggingPlugin extends Plugin {
     if (!this.removedRecords.some(item => item.id === record.id)) {
       this.removedRecords.push(record);
     }
+  }
+
+  /**
+   * 缓存一条新增（或内容被替换后重新登记）的媒体记录，按 id 去重。
+   * 新文件加入库时 create 事件会先行建档，这里记录下来供后续扫描提示计入。
+   */
+  private trackAddedRecord(record: MediaData): void {
+    if (!this.addedRecords.some(item => item.id === record.id)) {
+      this.addedRecords.push(record);
+    }
+  }
+
+  /**
+   * 取走并清空自上次提示以来「新增 / 内容更新」的媒体记录。
+   * 扫描提示会计入这些记录，从而不会把「已由 create 事件登记的媒体」漏报为无新增。
+   */
+  consumeAddedRecords(): MediaData[] {
+    const added = this.addedRecords;
+    this.addedRecords = [];
+    return added;
   }
 
   /**
@@ -1083,7 +1059,8 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
     // 检查哪些文件还没有数据记录
     const filesToProcess = supportedFiles;
 
-    let mediaCount = 0;
+    // 本次扫描真正新增 / 内容更新的记录 id（按 id 去重，避免与插件侧缓存重复计数）
+    const countedIds = new Set<string>();
 
     // 批量处理文件以提高性能
     const batchSize = 50; // 每批处理的文件数量
@@ -1095,17 +1072,31 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
         const existing = this.imageDataManager.getImageDataByPath(file.path);
         const mediaData = await this.ensureImageDataForFile(file);
 
-        return { changed: !existing ? !!mediaData : (mediaData ? existing.id !== mediaData.id : false) };
+        return {
+          id: mediaData?.id,
+          changed: !existing ? !!mediaData : (mediaData ? existing.id !== mediaData.id : false)
+        };
       });
 
       const results = await Promise.all(batchPromises);
-      mediaCount += results.filter(result => result.changed).length;
+      for (const result of results) {
+        if (result.changed && result.id) countedIds.add(result.id);
+      }
 
       // 更新通知，显示进度
       if (i + batchSize < filesToProcess.length) {
         new Notice(`正在扫描... 已处理 ${i + batch.length}/${filesToProcess.length} 个文件`);
       }
     }
+
+    // 合并「已由 create 事件抢先登记」的新增记录：扫描时这些文件路径已有记录，故看不到它们。
+    for (const record of this.consumeAddedRecords()) {
+      if (countedIds.has(record.id)) continue;
+      if (!this.imageDataManager.getImageData(record.id)) continue; // 已被删除 / 合并
+      countedIds.add(record.id);
+    }
+
+    const mediaCount = countedIds.size;
 
     if (mediaCount > 0) {
       await this.saveDataToFile();
