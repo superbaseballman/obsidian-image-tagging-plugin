@@ -112,13 +112,13 @@ export class GalleryView extends ItemView {
     this.containerEl.empty();
     
     // 创建主容器
-    const galleryContainer = this.containerEl.createEl('div', { cls: 'image-gallery-container' });
+    const galleryContainer = this.containerEl.createDiv({ cls: 'image-gallery-container' });
     
     // 创建顶部搜索栏
 
-    const header = galleryContainer.createEl('div', { cls: 'gallery-header' });
+    const header = galleryContainer.createDiv({ cls: 'gallery-header' });
 
-    const searchContainer = header.createEl('div', { cls: 'gallery-search-container' });
+    const searchContainer = header.createDiv({ cls: 'gallery-search-container' });
 
     const searchInput = searchContainer.createEl('input', {
 
@@ -132,7 +132,7 @@ export class GalleryView extends ItemView {
 
     // 创建清除按钮
 
-    const clearButton = searchContainer.createEl('span', {
+    const clearButton = searchContainer.createSpan({
 
       cls: 'search-clear-button',
 
@@ -157,13 +157,13 @@ export class GalleryView extends ItemView {
     });
     
     // 创建主内容区域
-    const contentContainer = galleryContainer.createEl('div', { cls: 'gallery-content' });
+    const contentContainer = galleryContainer.createDiv({ cls: 'gallery-content' });
     
     // 左侧边栏
-    const sidebar = contentContainer.createEl('div', { cls: 'gallery-sidebar' });
+    const sidebar = contentContainer.createDiv({ cls: 'gallery-sidebar' });
     
     // 分类导航
-    const categoriesSection = sidebar.createEl('div', { cls: 'gallery-categories' });
+    const categoriesSection = sidebar.createDiv({ cls: 'gallery-categories' });
     categoriesSection.createEl('h4', { text: '分类导航' });
     const categoriesList = categoriesSection.createEl('ul', { cls: 'categories-list' });
     
@@ -199,7 +199,7 @@ export class GalleryView extends ItemView {
 
     // 添加添加新分类的输入框和按钮
 
-    const addCategoryContainer = sidebar.createEl('div', { cls: 'add-category-container' });
+    const addCategoryContainer = sidebar.createDiv({ cls: 'add-category-container' });
 
     const addCategoryInput = addCategoryContainer.createEl('input', {
 
@@ -241,38 +241,38 @@ export class GalleryView extends ItemView {
     
     // 热门标签
 
-    const tagsSection = sidebar.createEl('div', { cls: 'gallery-tags' });
+    const tagsSection = sidebar.createDiv({ cls: 'gallery-tags' });
 
     tagsSection.createEl('h4', { text: '热门标签' });
 
-    tagsSection.createEl('div', { cls: 'tags-cloud' });
+    tagsSection.createDiv({ cls: 'tags-cloud' });
     
     // 图片统计信息
-    const statsSection = sidebar.createEl('div', { cls: 'gallery-stats' });
+    const statsSection = sidebar.createDiv({ cls: 'gallery-stats' });
     statsSection.createEl('h4', { text: '统计信息' });
-    const statsContainer = statsSection.createEl('div', { cls: 'stats-grid' });
+    const statsContainer = statsSection.createDiv({ cls: 'stats-grid' });
     
-    const totalMediaStat = statsContainer.createEl('div', { cls: 'stat-item' });
-    totalMediaStat.createEl('div', { cls: 'stat-value', attr: { id: 'total-media' }, text: '0' });
-    totalMediaStat.createEl('div', { cls: 'stat-label', text: '总媒体数' });
-    const totalTagsStat = statsContainer.createEl('div', { cls: 'stat-item' });
-    totalTagsStat.createEl('div', { cls: 'stat-value', attr: { id: 'total-tags' }, text: '0' });
-    totalTagsStat.createEl('div', { cls: 'stat-label', text: '标签总数' });
-    const totalCategoriesStat = statsContainer.createEl('div', { cls: 'stat-item' });
-    totalCategoriesStat.createEl('div', { cls: 'stat-value', attr: { id: 'total-categories-stat' }, text: '0' });
-    totalCategoriesStat.createEl('div', { cls: 'stat-label', text: '分类数' });
+    const totalMediaStat = statsContainer.createDiv({ cls: 'stat-item' });
+    totalMediaStat.createDiv({ cls: 'stat-value', attr: { id: 'total-media' }, text: '0' });
+    totalMediaStat.createDiv({ cls: 'stat-label', text: '总媒体数' });
+    const totalTagsStat = statsContainer.createDiv({ cls: 'stat-item' });
+    totalTagsStat.createDiv({ cls: 'stat-value', attr: { id: 'total-tags' }, text: '0' });
+    totalTagsStat.createDiv({ cls: 'stat-label', text: '标签总数' });
+    const totalCategoriesStat = statsContainer.createDiv({ cls: 'stat-item' });
+    totalCategoriesStat.createDiv({ cls: 'stat-value', attr: { id: 'total-categories-stat' }, text: '0' });
+    totalCategoriesStat.createDiv({ cls: 'stat-label', text: '分类数' });
     
     // 右侧主内容区
-    const mainContent = contentContainer.createEl('div', { cls: 'gallery-main' });
+    const mainContent = contentContainer.createDiv({ cls: 'gallery-main' });
     
     // 工具栏
-    const toolbar = mainContent.createEl('div', { cls: 'gallery-toolbar' });
+    const toolbar = mainContent.createDiv({ cls: 'gallery-toolbar' });
     toolbar.createEl('h3', { text: '图片图库' });
     
-    const toolbarControls = toolbar.createEl('div', { cls: 'toolbar-controls' });
+    const toolbarControls = toolbar.createDiv({ cls: 'toolbar-controls' });
     
     // 排序下拉菜单
-    const sortContainer = toolbarControls.createEl('div', { cls: 'sort-container' });
+    const sortContainer = toolbarControls.createDiv({ cls: 'sort-container' });
     const sortSelect = sortContainer.createEl('select', { cls: 'sort-select' });
     [
       ['date', '按时间'],
@@ -291,11 +291,11 @@ export class GalleryView extends ItemView {
     });
     
     // 主要网格
-    const gridContainer = mainContent.createEl('div', { cls: 'gallery-grid-container' });
-    this.imageGrid = gridContainer.createEl('div', { cls: 'gallery-grid' });
+    const gridContainer = mainContent.createDiv({ cls: 'gallery-grid-container' });
+    this.imageGrid = gridContainer.createDiv({ cls: 'gallery-grid' });
 
     // 分页控件栏（固定在网格下方）
-    this.paginationEl = mainContent.createEl('div', { cls: 'gallery-pagination' });
+    this.paginationEl = mainContent.createDiv({ cls: 'gallery-pagination' });
     
     // 添加事件监听器
     this.addEventListeners();
@@ -624,7 +624,7 @@ export class GalleryView extends ItemView {
       // 验证图片路径有效
       if (!image.path) return;
       
-      const imageCard = this.imageGrid.createEl('div', { cls: 'image-card' });
+      const imageCard = this.imageGrid.createDiv({ cls: 'image-card' });
       imageCard.dataset.imageId = image.id;
       
       // 使用安全的媒体路径获取方法
@@ -636,8 +636,8 @@ export class GalleryView extends ItemView {
         imageCard.addClass('selected');
       }
 
-      const cardInner = imageCard.createEl('div', { cls: 'image-card-inner' });
-      const previewContainer = cardInner.createEl('div', {
+      const cardInner = imageCard.createDiv({ cls: 'image-card-inner' });
+      const previewContainer = cardInner.createDiv({
         cls: 'image-preview-container',
         attr: { 'data-media-path': mediaPath }
       });
@@ -655,31 +655,31 @@ export class GalleryView extends ItemView {
         });
       }
 
-      const selectionIndicator = previewContainer.createEl('div', { cls: 'image-selection-indicator' });
+      const selectionIndicator = previewContainer.createDiv({ cls: 'image-selection-indicator' });
       if (isSelected) selectionIndicator.addClass('selected');
-      selectionIndicator.createEl('span', { cls: 'image-selection-check', text: '✓' });
+      selectionIndicator.createSpan({ cls: 'image-selection-check', text: '✓' });
 
-      const overlay = previewContainer.createEl('div', { cls: 'image-overlay' });
-      const overlayContent = overlay.createEl('div', { cls: 'image-overlay-content' });
+      const overlay = previewContainer.createDiv({ cls: 'image-overlay' });
+      const overlayContent = overlay.createDiv({ cls: 'image-overlay-content' });
       overlayContent.createEl('h4', { cls: 'image-title', text: image.title });
-      const tagsContainer = overlayContent.createEl('div', { cls: 'image-tags-preview' });
+      const tagsContainer = overlayContent.createDiv({ cls: 'image-tags-preview' });
       const colors = ['blue', 'green', 'purple', 'yellow', 'red', 'pink', 'indigo', 'teal'];
       image.tags.slice(0, 3).forEach(tag => {
-        const tagEl = tagsContainer.createEl('span', { cls: 'image-tag', text: tag });
+        const tagEl = tagsContainer.createSpan({ cls: 'image-tag', text: tag });
         tagEl.addClass(`tag-color-${colors[this.getTagColorIndex(tag)]}`);
       });
       if (image.tags.length > 3) {
-        tagsContainer.createEl('span', { cls: 'image-tag tag-more', text: `+${image.tags.length - 3}` });
+        tagsContainer.createSpan({ cls: 'image-tag tag-more', text: `+${image.tags.length - 3}` });
       }
 
-      const infoBar = cardInner.createEl('div', { cls: 'image-info-bar' });
+      const infoBar = cardInner.createDiv({ cls: 'image-info-bar' });
       infoBar.createEl('a', {
         cls: 'file-path-link image-path-link',
         text: image.path.split('/').pop() || image.path,
         attr: { href: '#', 'data-path': image.path }
       });
-      infoBar.createEl('span', { cls: 'image-size', text: image.size });
-      infoBar.createEl('span', {
+      infoBar.createSpan({ cls: 'image-size', text: image.size });
+      infoBar.createSpan({
         cls: 'image-resolution',
         text: `${image.type === 'image' ? '分辨率' : '时长'}: ${image.resolution}`
       });
@@ -927,7 +927,7 @@ export class GalleryView extends ItemView {
 
     this.selectedTags.forEach(tag => {
 
-      const tagElement = selectedTagsList.createEl('span', {
+      const tagElement = selectedTagsList.createSpan({
 
         cls: 'selected-tag-item',
 
@@ -937,7 +937,7 @@ export class GalleryView extends ItemView {
 
       
 
-      const removeBtn = tagElement.createEl('span', {
+      const removeBtn = tagElement.createSpan({
 
         cls: 'remove-selected-tag',
 
@@ -963,7 +963,7 @@ export class GalleryView extends ItemView {
 
     if (this.selectedTags.length === 0) {
 
-      selectedTagsList.createEl('span', {
+      selectedTagsList.createSpan({
 
         cls: 'no-selected-tags',
 
@@ -1041,7 +1041,7 @@ export class GalleryView extends ItemView {
 
     popularTags.forEach(tagInfo => {
 
-      const tagEl = tagsContainer.createEl('span', { 
+      const tagEl = tagsContainer.createSpan({ 
 
         cls: `popular-tag-item ${this.selectedTags.includes(tagInfo.tag) ? 'selected' : ''}`,
 
@@ -1067,7 +1067,7 @@ export class GalleryView extends ItemView {
 
     if (popularTags.length === 0) {
 
-      tagsContainer.createEl('div', { 
+      tagsContainer.createDiv({ 
 
         cls: 'no-popular-tags',
 
@@ -1087,19 +1087,19 @@ export class GalleryView extends ItemView {
 
   private openImageDetail(image: MediaData) {
     // 创建模态框显示媒体详情
-    const modal = this.containerEl.createEl('div', { cls: 'image-detail-modal' });
+    const modal = this.containerEl.createDiv({ cls: 'image-detail-modal' });
     
     // 使用安全的媒体路径
 
     const mediaPath = getSafeImagePath(this.app, image.path);
     
-    const backdrop = modal.createEl('div', { cls: 'modal-backdrop' });
-    const modalContent = modal.createEl('div', { cls: 'modal-content' });
-    const modalHeader = modalContent.createEl('div', { cls: 'modal-header' });
+    const backdrop = modal.createDiv({ cls: 'modal-backdrop' });
+    const modalContent = modal.createDiv({ cls: 'modal-content' });
+    const modalHeader = modalContent.createDiv({ cls: 'modal-header' });
     modalHeader.createEl('h3', { text: image.title });
-    modalHeader.createEl('span', { cls: 'modal-close-btn', text: '×' });
-    const modalBody = modalContent.createEl('div', { cls: 'modal-body' });
-    const previewContainer = modalBody.createEl('div', { cls: 'modal-image-preview' });
+    modalHeader.createSpan({ cls: 'modal-close-btn', text: '×' });
+    const modalBody = modalContent.createDiv({ cls: 'modal-body' });
+    const previewContainer = modalBody.createDiv({ cls: 'modal-image-preview' });
     if (image.type === 'video') {
       const video = previewContainer.createEl('video', { attr: { src: mediaPath } });
       video.controls = true;
@@ -1111,30 +1111,30 @@ export class GalleryView extends ItemView {
     } else {
       previewContainer.createEl('img', { attr: { src: mediaPath, alt: image.title } });
     }
-    const modalImageInfo = modalBody.createEl('div', { cls: 'modal-image-info' });
-    const titleSection = modalImageInfo.createEl('div', { cls: 'info-section' });
+    const modalImageInfo = modalBody.createDiv({ cls: 'modal-image-info' });
+    const titleSection = modalImageInfo.createDiv({ cls: 'info-section' });
     titleSection.createEl('label', { text: '标题' });
     titleSection.createEl('input', { cls: 'title-input', attr: { type: 'text', value: image.title } });
-    const descriptionSection = modalImageInfo.createEl('div', { cls: 'info-section' });
+    const descriptionSection = modalImageInfo.createDiv({ cls: 'info-section' });
     descriptionSection.createEl('label', { text: '描述' });
     descriptionSection.createEl('textarea', { cls: 'description-input', text: image.description });
-    const tagsSection = modalImageInfo.createEl('div', { cls: 'info-section tags-section' });
+    const tagsSection = modalImageInfo.createDiv({ cls: 'info-section tags-section' });
     tagsSection.createEl('label', { text: '标签' });
-    const currentTags = tagsSection.createEl('div', { cls: 'current-tags' });
+    const currentTags = tagsSection.createDiv({ cls: 'current-tags' });
     image.tags.forEach(tag => {
-      const currentTag = currentTags.createEl('span', { cls: 'current-tag' });
+      const currentTag = currentTags.createSpan({ cls: 'current-tag' });
       currentTag.appendText(tag);
-      currentTag.createEl('span', { cls: 'remove-tag', text: '×', attr: { 'data-tag': tag } });
+      currentTag.createSpan({ cls: 'remove-tag', text: '×', attr: { 'data-tag': tag } });
     });
-    const addTagContainer = tagsSection.createEl('div', { cls: 'add-tag-container' });
+    const addTagContainer = tagsSection.createDiv({ cls: 'add-tag-container' });
     addTagContainer.createEl('input', { cls: 'new-tag-input', attr: { type: 'text', placeholder: '添加新标签...' } });
     addTagContainer.createEl('button', { cls: 'add-tag-btn', text: '添加' });
-    const recentSection = tagsSection.createEl('div', { cls: 'recent-tags-section' });
+    const recentSection = tagsSection.createDiv({ cls: 'recent-tags-section' });
     recentSection.createEl('label', { text: '最近使用' });
-    recentSection.createEl('div', { cls: 'recent-tags-list' });
-    const fileInfoSection = modalImageInfo.createEl('div', { cls: 'info-section file-info-section' });
+    recentSection.createDiv({ cls: 'recent-tags-list' });
+    const fileInfoSection = modalImageInfo.createDiv({ cls: 'info-section file-info-section' });
     fileInfoSection.createEl('label', { text: '文件信息' });
-    const fileInfo = fileInfoSection.createEl('div', { cls: 'file-info' });
+    const fileInfo = fileInfoSection.createDiv({ cls: 'file-info' });
     const pathRow = fileInfo.createEl('p');
     pathRow.createEl('strong', { text: '路径:' });
     pathRow.createEl('a', { cls: 'file-path-link', text: image.path, attr: { href: '#', 'data-path': image.path } });
@@ -1150,7 +1150,7 @@ export class GalleryView extends ItemView {
     const modifiedRow = fileInfo.createEl('p');
     modifiedRow.createEl('strong', { text: '修改时间:' });
     modifiedRow.appendText(` ${new Date(image.lastModified).toLocaleString()}`);
-    const modalFooter = modalContent.createEl('div', { cls: 'modal-footer' });
+    const modalFooter = modalContent.createDiv({ cls: 'modal-footer' });
     modalFooter.createEl('button', { cls: 'modal-save-btn', text: '保存' });
     modalFooter.createEl('button', { cls: 'modal-cancel-btn', text: '取消' });
     
@@ -1176,7 +1176,7 @@ export class GalleryView extends ItemView {
     const recentTags = this.imageDataManager.getRecentTags();
     if (recentTags.length > 0) {
       recentTags.forEach(tag => {
-        const recentTagEl = recentTagsContainer.createEl('span', { cls: 'recent-tag-item', text: tag });
+        const recentTagEl = recentTagsContainer.createSpan({ cls: 'recent-tag-item', text: tag });
         
         // 检查当前图片是否已包含此最近使用的标签，如果是，则标记为选中状态
         if (image.tags.includes(tag)) {
@@ -1189,10 +1189,10 @@ export class GalleryView extends ItemView {
             image.tags.push(tag);
             
             // 更新当前标签显示
-            const newTagEl = currentTagsContainer?.createEl('span', { cls: 'current-tag' });
+            const newTagEl = currentTagsContainer?.createSpan({ cls: 'current-tag' });
             if (!newTagEl) return;
             newTagEl.appendText(tag);
-            const removeTagEl = newTagEl.createEl('span', { cls: 'remove-tag', text: '×', attr: { 'data-tag': tag } });
+            const removeTagEl = newTagEl.createSpan({ cls: 'remove-tag', text: '×', attr: { 'data-tag': tag } });
             
             removeTagEl.addEventListener('click', (e) => {
               const tagValue = (e.target as HTMLElement).dataset.tag;
@@ -1236,7 +1236,7 @@ export class GalleryView extends ItemView {
         recentTagsContainer.appendChild(recentTagEl);
       });
     } else {
-      const noRecentTagsEl = recentTagsContainer.createEl('span', { text: '暂无最近使用标签' });
+      const noRecentTagsEl = recentTagsContainer.createSpan({ text: '暂无最近使用标签' });
       noRecentTagsEl.addClass('no-recent-tags');
     }
     
@@ -1246,10 +1246,10 @@ export class GalleryView extends ItemView {
         if (!image.tags.includes(newTag)) {
           image.tags.push(newTag);
           
-          const newTagEl = currentTagsContainer?.createEl('span', { cls: 'current-tag' });
+          const newTagEl = currentTagsContainer?.createSpan({ cls: 'current-tag' });
           if (!newTagEl) return;
           newTagEl.appendText(newTag);
-          const removeTagEl = newTagEl.createEl('span', { cls: 'remove-tag', text: '×', attr: { 'data-tag': newTag } });
+          const removeTagEl = newTagEl.createSpan({ cls: 'remove-tag', text: '×', attr: { 'data-tag': newTag } });
           
           removeTagEl.addEventListener('click', (e) => {
             const tagValue = (e.target as HTMLElement).dataset.tag;
@@ -1382,7 +1382,7 @@ export class GalleryView extends ItemView {
 
     if (category !== '全部媒体') {
 
-      const deleteBtn = li.createEl('span', {
+      const deleteBtn = li.createSpan({
 
         cls: 'delete-category-btn',
 
@@ -1585,19 +1585,19 @@ export class GalleryView extends ItemView {
           // 创建批量操作工具栏 - 添加到gallery-main的最后
           const galleryMain = this.containerEl.querySelector('.gallery-main');
           if (galleryMain) {
-            batchToolbar = (galleryMain as HTMLElement).createEl('div', { cls: 'batch-operation-toolbar' });
+            batchToolbar = (galleryMain as HTMLElement).createDiv({ cls: 'batch-operation-toolbar' });
           } else {
             // 最后手段：在容器中创建
-            batchToolbar = this.containerEl.createEl('div', { cls: 'batch-operation-toolbar' });
+            batchToolbar = this.containerEl.createDiv({ cls: 'batch-operation-toolbar' });
           }
           
           // 添加工具栏内容
-          const toolbarContent = batchToolbar.createEl('div', { cls: 'batch-toolbar-content' });
-          toolbarContent.createEl('span', {
+          const toolbarContent = batchToolbar.createDiv({ cls: 'batch-toolbar-content' });
+          toolbarContent.createSpan({
             cls: 'batch-selection-info',
             text: `已选中 ${this.selectedImages.length} 个项目`
           });
-          const operationControls = toolbarContent.createEl('div', { cls: 'batch-operation-controls' });
+          const operationControls = toolbarContent.createDiv({ cls: 'batch-operation-controls' });
           operationControls.createEl('button', { cls: 'batch-add-tag-btn', text: '添加标签' });
           operationControls.createEl('button', { cls: 'batch-remove-tag-btn', text: '删除标签' });
           operationControls.createEl('button', { cls: 'batch-clear-selection', text: '清除选择' });
@@ -1641,27 +1641,27 @@ export class GalleryView extends ItemView {
   // 显示批量标签操作模态框
   private showBatchTagModal(operation: 'add' | 'remove') {
     // 创建模态框
-    const modal = this.containerEl.createEl('div', { cls: 'batch-tag-modal' });
+    const modal = this.containerEl.createDiv({ cls: 'batch-tag-modal' });
     
     const operationText = operation === 'add' ? '添加' : '删除';
-    const backdrop = modal.createEl('div', { cls: 'modal-backdrop' });
-    const modalContent = modal.createEl('div', { cls: 'modal-content' });
-    const modalHeader = modalContent.createEl('div', { cls: 'modal-header' });
+    const backdrop = modal.createDiv({ cls: 'modal-backdrop' });
+    const modalContent = modal.createDiv({ cls: 'modal-content' });
+    const modalHeader = modalContent.createDiv({ cls: 'modal-header' });
     modalHeader.createEl('h3', { text: `批量${operationText}标签` });
-    modalHeader.createEl('span', { cls: 'modal-close-btn', text: '×' });
-    const modalBody = modalContent.createEl('div', { cls: 'modal-body' });
-    const operationContainer = modalBody.createEl('div', { cls: 'batch-tag-operation' });
+    modalHeader.createSpan({ cls: 'modal-close-btn', text: '×' });
+    const modalBody = modalContent.createDiv({ cls: 'modal-body' });
+    const operationContainer = modalBody.createDiv({ cls: 'batch-tag-operation' });
     operationContainer.createEl('p', { text: `选中的项目: ${this.selectedImages.length} 个` });
-    const tagInputSection = operationContainer.createEl('div', { cls: 'tag-input-section' });
+    const tagInputSection = operationContainer.createDiv({ cls: 'tag-input-section' });
     tagInputSection.createEl('label', { text: `${operationText}标签:`, attr: { for: 'batch-tag-input' } });
     tagInputSection.createEl('input', {
       cls: 'batch-tag-input',
       attr: { id: 'batch-tag-input', type: 'text', placeholder: '输入标签，多个标签用逗号分隔' }
     });
-    const recentSection = tagInputSection.createEl('div', { cls: 'recent-tags-section' });
+    const recentSection = tagInputSection.createDiv({ cls: 'recent-tags-section' });
     recentSection.createEl('label', { text: '热门标签:' });
-    recentSection.createEl('div', { cls: 'recent-tags-list', attr: { id: 'batch-recent-tags-list' } });
-    const modalFooter = modalContent.createEl('div', { cls: 'modal-footer' });
+    recentSection.createDiv({ cls: 'recent-tags-list', attr: { id: 'batch-recent-tags-list' } });
+    const modalFooter = modalContent.createDiv({ cls: 'modal-footer' });
     modalFooter.createEl('button', { cls: 'modal-cancel-btn', text: '取消' });
     modalFooter.createEl('button', { cls: 'modal-confirm-btn', text: operationText });
     
@@ -1677,7 +1677,7 @@ export class GalleryView extends ItemView {
       const popularTags = this.imageDataManager.getPopularTags(10);
       if (popularTags.length > 0) {
         popularTags.forEach(tagInfo => {
-          const tagEl = recentTagsContainer.createEl('span', { 
+          const tagEl = recentTagsContainer.createSpan({ 
             cls: 'popular-tag-item',
             text: tagInfo.tag
           });
@@ -1691,7 +1691,7 @@ export class GalleryView extends ItemView {
           });
         });
       } else {
-        recentTagsContainer.createEl('span', { 
+        recentTagsContainer.createSpan({ 
           cls: 'no-popular-tags',
           text: '暂无热门标签'
         });
@@ -1862,18 +1862,18 @@ export class GalleryView extends ItemView {
 
     this.paginationEl.empty();
     if (total === 0) {
-      this.paginationEl.createEl('span', { cls: 'pagination-info', text: '共 0 项' });
+      this.paginationEl.createSpan({ cls: 'pagination-info', text: '共 0 项' });
       return;
     }
 
-    this.paginationEl.createEl('span', { cls: 'pagination-info', text: `共 ${total} 项 · 第 ${cur} / ${totalPages} 页` });
-    const controls = this.paginationEl.createEl('div', { cls: 'pagination-controls' });
+    this.paginationEl.createSpan({ cls: 'pagination-info', text: `共 ${total} 项 · 第 ${cur} / ${totalPages} 页` });
+    const controls = this.paginationEl.createDiv({ cls: 'pagination-controls' });
     const prevBtn = controls.createEl('button', { cls: 'pagination-btn pagination-prev', text: '‹', attr: { type: 'button' } });
     prevBtn.disabled = cur <= 1;
     prevBtn.addEventListener('click', () => this.goToPage(cur - 1));
     pageButtons.forEach(page => {
       if (page === 'ellipsis') {
-        controls.createEl('span', { cls: 'pagination-ellipsis', text: '…' });
+        controls.createSpan({ cls: 'pagination-ellipsis', text: '…' });
         return;
       }
       const pageButton = controls.createEl('button', {
@@ -1887,7 +1887,7 @@ export class GalleryView extends ItemView {
     nextBtn.disabled = cur >= totalPages;
     nextBtn.addEventListener('click', () => this.goToPage(cur + 1));
 
-    const sizeContainer = this.paginationEl.createEl('span', { cls: 'pagination-size' });
+    const sizeContainer = this.paginationEl.createSpan({ cls: 'pagination-size' });
     sizeContainer.appendText('每页');
     const sizeSelect = sizeContainer.createEl('select', { cls: 'pagination-size-select' });
     [24, 60, 120].forEach(size => sizeSelect.createEl('option', {

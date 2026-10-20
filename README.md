@@ -1,4 +1,81 @@
-# Obsidian 图片标签插件
+# Image Tagging
+
+An Obsidian plugin that adds tag management, description editing and a gallery view for image and video attachments.
+
+## Features
+
+- **Tag management** – attach custom tags to any image or video attachment for easier classification and retrieval
+- **Gallery view** – browse every attachment in the vault with a paginated grid layout
+- **Info panel** – view and edit the title, description and tags of the active media file in the sidebar
+- **Search and filter** – find media quickly by tag, title, description or file name
+- **Batch scanning** – index all images in the entire vault, or restrict scanning to selected folders
+- **Page image extraction** – collect all images referenced by the current note
+- **SQLite storage** – media records are stored in `.obsidian/image-tags.db`, avoiding a full JSON rewrite on every change
+- **MD5 identifier** – records are keyed by the file content MD5, so renaming a file keeps its tags and description
+- **Mobile support** – works on desktop and on Android / iOS
+
+## Installation
+
+1. Download `main.js`, `manifest.json` and `styles.css` from the release matching your Obsidian version.
+2. Copy the three files into `<your-vault>/.obsidian/plugins/image-tagging/`.
+3. Reload Obsidian and enable **Image Tagging** in *Settings → Community plugins*.
+
+> Requires Obsidian 1.13.0 or newer (the settings tab uses the declarative settings API so it appears in settings search).
+
+### Building from source
+
+```bash
+npm install
+npm run build
+```
+
+The build produces `main.js`, `manifest.json` and `styles.css`, which are the only files needed by the plugin.
+
+## Usage
+
+1. After enabling the plugin, open the command palette (`Ctrl/Cmd+P`) and use:
+   - **打开图片图库** – open the gallery view
+   - **打开图片信息面板** – open the sidebar info panel
+   - **扫描库中的所有图片** – scan and index every image in the vault
+   - **从当前页面提取图片** – collect images referenced by the current note
+2. In the gallery view you can browse all media, search by tag / title / description, open a detail view, and add or edit tags.
+3. Selecting an image file automatically shows its details in the info panel, where the title, description and tags can be edited.
+
+## Configuration
+
+- **Legacy JSON data path** – only used on first upgrade to locate data written by older versions
+- **Supported formats** – image file extensions handled by the plugin
+- **Auto tag on import** – whether a record is created automatically when a new image is added to the vault
+- **Scan folders** – pick one or more folders to restrict scanning; with no folder selected the whole vault is scanned
+
+## Platform support
+
+The plugin supports both desktop and mobile (Android / iOS):
+
+- Storage uses the asm.js build of `sql.js` (`.obsidian/image-tags.db`), so no native desktop module is required
+- File fingerprints are computed with a pure TypeScript MD5 implementation, without Node's `crypto` / `Buffer`
+- *Export JSON* opens a native "Save as" dialog on desktop and writes a vault file on mobile
+- *Import JSON* opens a native "Open file" dialog on desktop and picks a vault file on mobile
+- *Open with default app* is desktop-only and is hidden on mobile
+
+## Data migration
+
+Data is stored in `.obsidian/image-tags.db`. On first start the plugin reads the legacy JSON path from settings plus the common old locations. The old JSON file is deleted only after the SQLite write succeeds; if migration fails the source file is kept.
+
+Record IDs are the content MD5 of the file. Renaming a file keeps the ID, while changing the content makes the plugin inherit the existing tags, title and description by path and generate a new MD5 ID.
+
+## Startup performance
+
+- Settings are no longer awaited synchronously during `onload`; the UI renders first and settings merge in asynchronously
+- `sql.js` initialization and the database read are deferred to an idle callback after the layout is ready
+- Restored gallery leaves load once layout and plugin data are ready
+- A single delegated `contextmenu` listener avoids duplicate menus and extra startup cost
+
+---
+
+# 中文说明
+
+## 简介
 
 这是一个功能丰富的 Obsidian 插件，提供图片标签管理和图库视图功能。
 

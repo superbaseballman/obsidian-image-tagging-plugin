@@ -24,7 +24,7 @@ class ConfirmModal extends Modal {
 
   onOpen(): void {
     this.contentEl.createEl('p', { text: this.message });
-    const buttons = this.contentEl.createEl('div', { cls: 'modal-button-container' });
+    const buttons = this.contentEl.createDiv({ cls: 'modal-button-container' });
     buttons.createEl('button', { text: '取消' }).addEventListener('click', () => this.close());
     buttons.createEl('button', { cls: 'mod-warning', text: '确认' }).addEventListener('click', () => {
       this.resolved = true;

@@ -51,14 +51,14 @@ export class ImageView extends ItemView {
     this.contentEl.addClass('image-info-panel');
     
     // 创建标题
-    const header = this.contentEl.createEl('div', { cls: 'image-info-header' });
+    const header = this.contentEl.createDiv({ cls: 'image-info-header' });
     header.createEl('h3', { text: '媒体信息' });
     
     // 创建信息容器
-    this.imageInfoContainer = this.contentEl.createEl('div', { cls: 'image-info-container' });
+    this.imageInfoContainer = this.contentEl.createDiv({ cls: 'image-info-container' });
     
     // 初始化为空内容
-    this.imageInfoContainer.createEl('div', { 
+    this.imageInfoContainer.createDiv({ 
       cls: 'no-image-selected', 
       text: '在库中选择一个媒体文件以查看详细信息' 
     });
@@ -78,7 +78,7 @@ export class ImageView extends ItemView {
     // 如果没有文件或者文件不是支持的媒体格式，则显示提示信息
     if (!file || !this.isSupportedImageFile(file)) {
       this.imageInfoContainer.empty();
-      this.imageInfoContainer.createEl('div', { 
+      this.imageInfoContainer.createDiv({ 
         cls: 'no-image-selected', 
         text: '在库中选择一个媒体文件以查看详细信息' 
       });
@@ -150,7 +150,7 @@ export class ImageView extends ItemView {
     
     // 验证媒体路径
     if (!imageData.path) {
-      this.imageInfoContainer.createEl('div', { 
+      this.imageInfoContainer.createDiv({ 
         cls: 'no-image-selected', 
         text: '媒体路径无效' 
       });
@@ -158,7 +158,7 @@ export class ImageView extends ItemView {
     }
     
     // 媒体预览
-    const previewContainer = this.imageInfoContainer.createEl('div', { cls: 'image-preview-container' });
+    const previewContainer = this.imageInfoContainer.createDiv({ cls: 'image-preview-container' });
     
     // 根据媒体类型创建不同的预览元素
     if (imageData.type === 'image') {
@@ -197,13 +197,13 @@ export class ImageView extends ItemView {
     }
     
     // 媒体基本信息
-    const infoContainer = this.imageInfoContainer.createEl('div', { cls: 'image-details' });
+    const infoContainer = this.imageInfoContainer.createDiv({ cls: 'image-details' });
     
     // 文件信息部分
-    const fileInfoSection = infoContainer.createEl('div', { cls: 'info-section file-info-section' });
+    const fileInfoSection = infoContainer.createDiv({ cls: 'info-section file-info-section' });
     fileInfoSection.createEl('label', { text: '文件信息' });
     
-    const fileInfoContainer = fileInfoSection.createEl('div', { cls: 'file-info' });
+    const fileInfoContainer = fileInfoSection.createDiv({ cls: 'file-info' });
     
     // 根据媒体类型确定第二列显示什么
     let secondColumnLabel = imageData.type === 'image' ? '分辨率' : (imageData.type === 'video' ? '时长' : '时长');
@@ -239,7 +239,7 @@ export class ImageView extends ItemView {
     modifiedRow.appendText(` ${new Date(imageData.lastModified).toLocaleString()}`);
 
     // 标题编辑
-    const titleContainer = infoContainer.createEl('div', { cls: 'info-item' });
+    const titleContainer = infoContainer.createDiv({ cls: 'info-item' });
     titleContainer.createEl('label', { text: '标题' });
     const titleInput = titleContainer.createEl('input', {
       type: 'text',
@@ -248,7 +248,7 @@ export class ImageView extends ItemView {
     });
     
     // 描述编辑
-    const descContainer = infoContainer.createEl('div', { cls: 'info-item' });
+    const descContainer = infoContainer.createDiv({ cls: 'info-item' });
     descContainer.createEl('label', { text: '描述' });
     const descInput = descContainer.createEl('textarea', {
       cls: 'description-input',
@@ -256,15 +256,15 @@ export class ImageView extends ItemView {
     });
     
     // 标签编辑
-    const tagsContainer = infoContainer.createEl('div', { cls: 'info-item tags-section' });
+    const tagsContainer = infoContainer.createDiv({ cls: 'info-item tags-section' });
     tagsContainer.createEl('label', { text: '标签' });
     
-    const tagsList = tagsContainer.createEl('div', { cls: 'tags-list' });
+    const tagsList = tagsContainer.createDiv({ cls: 'tags-list' });
     imageData.tags.forEach(tag => {
       this.createTagElement(tagsList, tag, imageData);
     });
     
-    const tagInputContainer = tagsContainer.createEl('div', { cls: 'tag-input-container' });
+    const tagInputContainer = tagsContainer.createDiv({ cls: 'tag-input-container' });
     const tagInput = tagInputContainer.createEl('input', {
       type: 'text',
       cls: 'tag-input',
@@ -278,15 +278,15 @@ export class ImageView extends ItemView {
     });
     
     // 最近使用的标签部分
-    const recentTagsContainer = tagsContainer.createEl('div', { cls: 'recent-tags-container' });
+    const recentTagsContainer = tagsContainer.createDiv({ cls: 'recent-tags-container' });
     recentTagsContainer.createEl('label', { text: '最近使用' });
     
-    const recentTagsList = recentTagsContainer.createEl('div', { cls: 'recent-tags-list' });
+    const recentTagsList = recentTagsContainer.createDiv({ cls: 'recent-tags-list' });
     
     // 获取最近使用的标签并显示
     const recentTags = this.imageDataManager.getRecentTags();
     recentTags.forEach(tag => {
-      const recentTagEl = recentTagsList.createEl('span', { 
+      const recentTagEl = recentTagsList.createSpan({ 
         cls: 'recent-tag-item', 
         text: tag 
       });
@@ -334,7 +334,7 @@ export class ImageView extends ItemView {
     
     // 如果没有最近使用的标签，显示提示
     if (recentTags.length === 0) {
-      recentTagsList.createEl('span', { 
+      recentTagsList.createSpan({ 
         cls: 'no-recent-tags', 
         text: '暂无最近使用标签' 
       });
@@ -377,10 +377,10 @@ export class ImageView extends ItemView {
   }
   
   private createTagElement(container: HTMLElement, tag: string, imageData: MediaData) {
-    const tagEl = container.createEl('span', { cls: 'tag-item' });
+    const tagEl = container.createSpan({ cls: 'tag-item' });
     tagEl.setText(tag);
     
-    const removeBtn = tagEl.createEl('span', { 
+    const removeBtn = tagEl.createSpan({ 
       cls: 'remove-tag', 
       text: '×' 
     });

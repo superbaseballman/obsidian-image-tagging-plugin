@@ -662,7 +662,6 @@
   position: relative;
   background-color: var(--background-primary);
   border-radius: 8px;
-  max-width: 90vw;
   max-height: 90vh;
   overflow: hidden;
   display: flex;
@@ -1050,7 +1049,7 @@
 
 /* 隐藏类 */
 .hidden {
-  display: none !important;
+  display: none;
 }
 
 /* 选中状态指示器 */
@@ -1106,7 +1105,7 @@
 /* 选中的图片卡片样式 */
 .image-card.selected {
   border: 2px solid var(--interactive-accent);
-  box-shadow: 0 0 0 2px var(--interactive-accent) !important;
+  box-shadow: 0 0 0 2px var(--interactive-accent);
 }
 
 /* 批量操作工具栏 */
@@ -1122,6 +1121,11 @@
   justify-content: space-between;
   width: 100%;
   box-shadow: 0 -2px 4px rgba(0,0,0,0.05);
+}
+
+/* 批量操作工具栏使用了 display: flex，需更高优先级才能被 .hidden 隐藏 */
+.batch-operation-toolbar.hidden {
+  display: none;
 }
 
 .batch-toolbar-content {
@@ -1376,10 +1380,6 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 4px;
-}
-
-.gallery-pagination .pagination-pages {
-  display: contents;
 }
 
 .gallery-pagination .pagination-btn {

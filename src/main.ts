@@ -937,7 +937,7 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
   async migrateLegacyData() {
     try {
       if (await this.app.vault.adapter.exists(this.sqliteStoragePath)) {
-        new Notice('SQLite 数据已存在，无需迁移。');
+        new Notice('数据库已存在，无需迁移。');
         return;
       }
       await this.loadDataFromFile();
@@ -1274,6 +1274,17 @@ async getImageInfoFromPath(imagePath: string, activeFile: TFile): Promise<TFile 
 
 
 
+/** 声明式设置控件回调拿到的值类型不确定，这里只接受可安全字符串化的原始值 */
+function toSettingString(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  return '';
+}
+
 class ImageTaggingSettingTab extends PluginSettingTab {
   plugin: ImageTaggingPlugin;
 
@@ -1376,7 +1387,7 @@ class ImageTaggingSettingTab extends PluginSettingTab {
   async setControlValue(key: string, value: unknown): Promise<void> {
     switch (key) {
       case 'supportedFormats':
-        this.plugin.settings.supportedFormats = String(value ?? '')
+        this.plugin.settings.supportedFormats = toSettingString(value)
           .split(',')
           .map(ext => ext.trim().toLowerCase())
           .filter(ext => ext.length > 0);
@@ -1389,7 +1400,7 @@ class ImageTaggingSettingTab extends PluginSettingTab {
         this.refreshDomState();
         break;
       case 'autoTagOnImportValue':
-        this.plugin.settings.autoTagOnImportValue = String(value ?? '');
+        this.plugin.settings.autoTagOnImportValue = toSettingString(value);
         await this.plugin.saveSettings();
         break;
       default:

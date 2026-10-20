@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - 设置页改用 Obsidian 声明式设置 API（`getSettingDefinitions()`），设置项可被设置搜索索引到；最低支持版本提升至 Obsidian 1.13.0。
 - 清理代码规范问题：移除不必要的类型断言与 `any`、统一使用 `Logger`、补齐未处理的 Promise、按扩展名推断媒体类型。
+- 继续清理代码规范问题：DOM 创建统一使用 `createDiv` / `createSpan`，`Logger` 只使用 `warn` / `error` / `debug`，设置控件值不再直接字符串化。
+- 样式表移除重复的 `max-width`、`!important` 与不再使用的 `display: contents` 规则。
+- README 补充英文简介与安装 / 使用说明，标题与插件名 `Image Tagging` 保持一致。
 
 ## [2.2.11] 
 ### Fixed - 2026-10-05

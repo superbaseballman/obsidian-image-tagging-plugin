@@ -25,13 +25,13 @@ export class Logger {
 
   static debug(message: string, ...optionalParams: unknown[]) {
     if (this.level <= LogLevel.DEBUG) {
-      console.log(`[${this.pluginName}] DEBUG: ${message}`, ...optionalParams);
+      console.debug(`[${this.pluginName}] DEBUG: ${message}`, ...optionalParams);
     }
   }
 
   static info(message: string, ...optionalParams: unknown[]) {
     if (this.level <= LogLevel.INFO) {
-      console.info(`[${this.pluginName}] INFO: ${message}`, ...optionalParams);
+      console.debug(`[${this.pluginName}] INFO: ${message}`, ...optionalParams);
     }
   }
 
