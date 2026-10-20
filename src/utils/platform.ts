@@ -30,7 +30,11 @@ interface ElectronLike {
 export async function getElectron(): Promise<ElectronLike | null> {
   if (!isDesktopApp()) return null;
   try {
-    return await import('electron') as unknown as ElectronLike;
+    const electronModule: unknown = await import('electron');
+    if (typeof electronModule === 'object' && electronModule !== null && 'shell' in electronModule) {
+      return electronModule as ElectronLike;
+    }
+    return null;
   } catch (e) {
     Logger.debug('Electron 模块不可用:', e);
     return null;

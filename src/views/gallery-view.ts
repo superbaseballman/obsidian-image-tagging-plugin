@@ -169,7 +169,7 @@ export class GalleryView extends ItemView {
     
     // 添加分类项
 
-    this.categories.forEach((category, index) => {
+    this.categories.forEach((category) => {
 
       const li = this.createCategoryElement(categoriesList, category, category === '全部媒体');
 
@@ -245,7 +245,7 @@ export class GalleryView extends ItemView {
 
     tagsSection.createEl('h4', { text: '热门标签' });
 
-    const tagsContainer = tagsSection.createEl('div', { cls: 'tags-cloud' });
+    tagsSection.createEl('div', { cls: 'tags-cloud' });
     
     // 图片统计信息
     const statsSection = sidebar.createEl('div', { cls: 'gallery-stats' });
@@ -286,8 +286,8 @@ export class GalleryView extends ItemView {
       cls: 'refresh-button',
       text: '刷新'
     });
-    refreshButton.addEventListener('click', async () => {
-      await this.refreshGallery();
+    refreshButton.addEventListener('click', () => {
+      void this.refreshGallery();
     });
     
     // 主要网格
@@ -389,7 +389,7 @@ export class GalleryView extends ItemView {
     
     if (!plugin) {
       new Notice('无法获取插件实例，刷新失败');
-      console.error('Failed to get plugin instance in refreshGallery');
+      Logger.error('Failed to get plugin instance in refreshGallery');
       return;
     }
 
@@ -450,7 +450,7 @@ export class GalleryView extends ItemView {
     const plugin = getImageTaggingPlugin(this.app);
     
     if (!plugin || !plugin.imageDataManager) {
-      console.error('Failed to get plugin or imageDataManager in scanImagesBasedOnSettings');
+      Logger.error('Failed to get plugin or imageDataManager in scanImagesBasedOnSettings');
       return null;
     }
 
@@ -673,7 +673,7 @@ export class GalleryView extends ItemView {
       }
 
       const infoBar = cardInner.createEl('div', { cls: 'image-info-bar' });
-      const pathLink = infoBar.createEl('a', {
+      infoBar.createEl('a', {
         cls: 'file-path-link image-path-link',
         text: image.path.split('/').pop() || image.path,
         attr: { href: '#', 'data-path': image.path }
@@ -787,7 +787,7 @@ export class GalleryView extends ItemView {
         if (target.classList.contains('file-path-link') || target.classList.contains('image-path-link')) {
           e.preventDefault();
           const path = target.getAttribute('data-path') || image.path;
-          this.openImageFile(path);
+          void this.openImageFile(path);
         } else if (target.classList.contains('image-tag')) {
           // 如果点击的是标签，则不打开详情
           e.stopPropagation();
@@ -802,7 +802,7 @@ export class GalleryView extends ItemView {
       });
       
       // 右键点击用于选择图片（在上下文菜单显示之前）
-      imageCard.addEventListener('contextmenu', (e) => {
+      imageCard.addEventListener('contextmenu', () => {
         // 如果图片未被选中，将其添加到选中列表
         if (!this.selectedImages.includes(image.id)) {
           // 清除之前的选中状态
@@ -1171,7 +1171,6 @@ export class GalleryView extends ItemView {
     const newTagInput = modal.querySelector('.new-tag-input') as HTMLInputElement;
     const currentTagsContainer = modal.querySelector('.current-tags');
     const recentTagsContainer = modal.querySelector('.recent-tags-list') as HTMLElement;
-    const suggestionsContainer = modal.querySelector('.tag-suggestions-container') as HTMLElement;
     
     // 显示最近使用的标签
     const recentTags = this.imageDataManager.getRecentTags();
@@ -1288,7 +1287,7 @@ export class GalleryView extends ItemView {
 
     const saveBtn = modal.querySelector('.modal-save-btn');
 
-    saveBtn?.addEventListener('click', async () => {
+    const saveImage = async () => {
 
       // 更新图片数据
 
@@ -1334,6 +1333,12 @@ export class GalleryView extends ItemView {
 
       this.renderImages(false); // 重新渲染（保留当前页，不跳回第一页）
 
+    };
+
+    saveBtn?.addEventListener('click', () => {
+
+      void saveImage();
+
     });
 
 
@@ -1350,7 +1355,7 @@ export class GalleryView extends ItemView {
 
         if (path) {
 
-          this.openImageFile(path);
+          void this.openImageFile(path);
 
         }
 
@@ -1419,7 +1424,7 @@ export class GalleryView extends ItemView {
     this.categories.push(newCategory);
     
     // 保存分类到插件设置
-    this.saveCategories();
+    void this.saveCategories();
 
     // 创建新的分类元素
     const newCategoryElement = this.createCategoryElement(categoriesList, newCategory, false);
@@ -1446,7 +1451,7 @@ export class GalleryView extends ItemView {
       this.categories = this.categories.filter(cat => cat !== category);
       
       // 保存分类到插件设置
-      this.saveCategories();
+      void this.saveCategories();
       
       // 如果当前分类被删除，切换到"全部媒体"
       if (this.currentCategory === category) {
@@ -1490,7 +1495,7 @@ export class GalleryView extends ItemView {
     categoriesList.empty();
     
     // 重新添加所有分类
-    this.categories.forEach((category, index) => {
+    this.categories.forEach((category) => {
       const li = this.createCategoryElement(categoriesList, category, category === this.currentCategory);
       li.addEventListener('click', () => {
         this.currentCategory = category;
@@ -1703,7 +1708,7 @@ export class GalleryView extends ItemView {
     
     // 确认按钮事件
     if (confirmBtn) {
-      confirmBtn.addEventListener('click', async () => {
+      const applyBatchOperation = async () => {
         if (tagInput && tagInput.value.trim()) {
           const tags = tagInput.value.split(',')
             .map(tag => tag.trim())
@@ -1722,6 +1727,9 @@ export class GalleryView extends ItemView {
         } else {
           new Notice('请输入标签');
         }
+      };
+      confirmBtn.addEventListener('click', () => {
+        void applyBatchOperation();
       });
     }
   }

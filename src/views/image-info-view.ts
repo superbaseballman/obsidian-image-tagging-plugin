@@ -162,7 +162,7 @@ export class ImageView extends ItemView {
     
     // 根据媒体类型创建不同的预览元素
     if (imageData.type === 'image') {
-      const img = previewContainer.createEl('img', {
+      previewContainer.createEl('img', {
         cls: 'image-preview',
         attr: {
           src: getSafeImagePath(this.app, imageData.path),
@@ -170,7 +170,7 @@ export class ImageView extends ItemView {
         }
       });
     } else if (imageData.type === 'video') {
-      const video = previewContainer.createEl('video', {
+      previewContainer.createEl('video', {
         cls: 'image-preview',
         attr: {
           src: getSafeImagePath(this.app, imageData.path),
@@ -178,7 +178,7 @@ export class ImageView extends ItemView {
         }
       });
     } else if (imageData.type === 'audio') {
-      const audio = previewContainer.createEl('audio', {
+      previewContainer.createEl('audio', {
         cls: 'image-preview',
         attr: {
           src: getSafeImagePath(this.app, imageData.path),
@@ -187,7 +187,7 @@ export class ImageView extends ItemView {
       });
     } else {
       // 默认作为图片处理
-      const img = previewContainer.createEl('img', {
+      previewContainer.createEl('img', {
         cls: 'image-preview',
         attr: {
           src: getSafeImagePath(this.app, imageData.path),
@@ -217,7 +217,7 @@ export class ImageView extends ItemView {
     });
     pathLink.addEventListener('click', (e) => {
       e.preventDefault();
-      this.openImageFile(imageData.path);
+      void this.openImageFile(imageData.path);
     });
     if (imageData.size) {
       const sizeRow = fileInfoContainer.createEl('p');
@@ -279,7 +279,7 @@ export class ImageView extends ItemView {
     
     // 最近使用的标签部分
     const recentTagsContainer = tagsContainer.createEl('div', { cls: 'recent-tags-container' });
-    const recentTagsLabel = recentTagsContainer.createEl('label', { text: '最近使用' });
+    recentTagsContainer.createEl('label', { text: '最近使用' });
     
     const recentTagsList = recentTagsContainer.createEl('div', { cls: 'recent-tags-list' });
     
@@ -368,11 +368,11 @@ export class ImageView extends ItemView {
     });
     
     saveBtn.addEventListener('click', () => {
-      this.saveImageInfo(imageData, titleInput, descInput);
+      void this.saveImageInfo(imageData, titleInput, descInput);
     });
     
     deleteBtn.addEventListener('click', () => {
-      this.deleteImageFile(imageData);
+      void this.deleteImageFile(imageData);
     });
   }
   
@@ -478,6 +478,7 @@ export class ImageView extends ItemView {
         new Notice(`找不到文件: ${path}`);
       }
     } catch (error) {
+      Logger.error(`打开文件失败: ${path}`, error);
     }
   }
 
@@ -503,7 +504,7 @@ export class ImageView extends ItemView {
       }
     } catch (error) {
       Logger.error('删除图片文件时发生错误:', error);
-      new Notice(`删除失败: ${error.message}`);
+      new Notice(`删除失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 }

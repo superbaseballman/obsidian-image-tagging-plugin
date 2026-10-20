@@ -1,4 +1,4 @@
-import { TFile, App } from 'obsidian';
+import { TFile, App, FileSystemAdapter } from 'obsidian';
 import { ImageDataManager, ImageTaggingSettings, MediaData } from '../models/image-data-model';
 import { Logger } from './logger';
 import { ImageCacheManager } from './image-cache-manager';
@@ -85,16 +85,17 @@ export const IMAGE_TAGGING_PLUGIN_ID = 'image-tagging';
 /** 历史遗留 id：早期版本曾使用过，保留兼容以免旧环境取不到实例 */
 const LEGACY_PLUGIN_IDS = ['image-tagging-obsidian'];
 
+/** 插件实例内部注册表（Obsidian 未公开 app.plugins 的类型） */
+interface PluginRegistry {
+  getPlugin?: (id: string) => unknown;
+  plugins?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
 // 获取插件实例
 export function getImageTaggingPlugin(app: App): ImageTaggingPlugin | null {
   try {
-    const manager = (app as any).plugins as
-      | {
-          getPlugin?: (id: string) => unknown;
-          plugins?: { [key: string]: unknown };
-          [key: string]: unknown;
-        }
-      | undefined;
+    const manager = (app as unknown as { plugins?: PluginRegistry }).plugins;
     const ids = [IMAGE_TAGGING_PLUGIN_ID, ...LEGACY_PLUGIN_IDS];
     const candidates: unknown[] = [];
 
@@ -281,8 +282,9 @@ export function resolveAppResourceUrl(app: App, src: string): TFile | null {
   if (direct instanceof TFile) return direct;
 
   // 2) 桌面端绝对路径 → 转换为库内相对路径
-  const basePath = (app.vault.adapter as any)?.getBasePath?.();
-  if (typeof basePath === 'string' && basePath) {
+  const adapter = app.vault.adapter;
+  const basePath = adapter instanceof FileSystemAdapter ? adapter.getBasePath() : undefined;
+  if (basePath) {
     const normalizedBase = basePath.replace(/\\/g, '/').replace(/\/$/, '');
     const normalizedCandidate = candidate.replace(/\\/g, '/');
     if (normalizedCandidate.toLowerCase().startsWith(`${normalizedBase.toLowerCase()}/`)) {

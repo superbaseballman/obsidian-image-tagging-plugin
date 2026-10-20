@@ -5,9 +5,9 @@ import { Logger } from './logger';
 
 export class ImageTaggingError extends Error {
   public readonly code: string;
-  public readonly details?: any;
+  public readonly details?: unknown;
 
-  constructor(message: string, code: string, details?: any) {
+  constructor(message: string, code: string, details?: unknown) {
     super(message);
     this.name = 'ImageTaggingError';
     this.code = code;

@@ -85,13 +85,17 @@ export function isSupportedMediaFile(file: TFile, settings: ImageTaggingSettings
 export const isSupportedImageFile = isSupportedMediaFile;
 
 // 获取媒体类型
-export function getMediaType(file: TFile): 'image' | 'video' | 'audio' | null {
-  const extension = file.extension ? file.extension.toLowerCase() : '';
+export function getMediaTypeByExtension(extension: string): 'image' | 'video' | 'audio' | null {
+  const normalized = extension ? extension.toLowerCase() : '';
 
-  if (IMAGE_FORMATS.includes(extension)) return 'image';
-  if (VIDEO_FORMATS.includes(extension)) return 'video';
-  if (AUDIO_FORMATS.includes(extension)) return 'audio';
+  if (IMAGE_FORMATS.includes(normalized)) return 'image';
+  if (VIDEO_FORMATS.includes(normalized)) return 'video';
+  if (AUDIO_FORMATS.includes(normalized)) return 'audio';
   return null;
+}
+
+export function getMediaType(file: TFile): 'image' | 'video' | 'audio' | null {
+  return getMediaTypeByExtension(file.extension);
 }
 
 // 数据管理器类 

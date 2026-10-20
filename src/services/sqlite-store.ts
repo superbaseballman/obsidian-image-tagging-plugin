@@ -97,7 +97,10 @@ export class SqliteStore {
 
   private async flush(database: Database): Promise<void> {
     await this.ensureDirectory();
-    await this.adapter.writeBinary(this.databasePath, database.export().buffer as ArrayBuffer);
+    const exported = database.export();
+    const buffer = new ArrayBuffer(exported.length);
+    new Uint8Array(buffer).set(exported);
+    await this.adapter.writeBinary(this.databasePath, buffer);
   }
 
   private async ensureDirectory(): Promise<void> {
@@ -114,8 +117,10 @@ export class SqliteStore {
 
   private parseTags(value: unknown): string[] {
     try {
-      const parsed = JSON.parse(String(value));
-      return Array.isArray(parsed) ? parsed.filter((tag): tag is string => typeof tag === 'string') : [];
+      const parsed: unknown = JSON.parse(String(value));
+      if (!Array.isArray(parsed)) return [];
+      const tags = parsed as unknown[];
+      return tags.filter((tag): tag is string => typeof tag === 'string');
     } catch {
       return [];
     }

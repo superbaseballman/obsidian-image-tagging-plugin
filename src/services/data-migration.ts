@@ -1,5 +1,5 @@
 import { MediaData } from '../models/image-data-model';
-import { getMediaType } from '../models/image-data-model';
+import { getMediaTypeByExtension } from '../models/image-data-model';
 import { TFile, App } from 'obsidian';
 import { Logger } from '../utils/logger';
 import { getFileMd5 } from '../utils/file-hash';
@@ -34,14 +34,17 @@ export class DataMigration {
    * 检查数据是否为旧版本格式
    * 通过检查是否存在 'type' 字段来判断
    */
-  static isLegacyFormat(data: any[]): boolean {
+  static isLegacyFormat(data: unknown[]): boolean {
     if (!Array.isArray(data) || data.length === 0) {
       return false;
     }
     
     // 检查第一个元素是否有 'type' 字段
-    const firstItem = data[0];
-    return !firstItem.hasOwnProperty('type');
+    const firstItem: unknown = data[0];
+    if (typeof firstItem !== 'object' || firstItem === null) {
+      return false;
+    }
+    return !('type' in firstItem);
   }
 
   /**
@@ -49,36 +52,11 @@ export class DataMigration {
    * @param legacyData 旧版本数据数组
    * @returns 转换后的新版本数据数组
    */
-  static migrateFromLegacy(legacyData: LegacyImageData[]): MediaData[] {
+  static migrateFromLegacy(legacyData: unknown[]): MediaData[] {
     Logger.info(`开始迁移 ${legacyData.length} 条旧版本数据记录`);
     
-    const migratedData: MediaData[] = legacyData.map(item => {
-      // 根据文件扩展名确定媒体类型
-      const pathParts = item.path.split('.');
-      const extension = pathParts.length > 0 ? pathParts[pathParts.length - 1].toLowerCase() : '';
-      
-      // 使用 getMediaType 函数确定媒体类型
-      let mediaType: 'image' | 'video' | 'audio' = 'image'; // 默认为图片
-      if (extension) {
-        // 临时创建一个对象来使用 getMediaType 函数
-        const tempFile = {
-          extension: extension
-        } as TFile;
-        
-        const detectedType = getMediaType(tempFile);
-        if (detectedType) {
-          mediaType = detectedType;
-        }
-      }
-      
-      // 创建新版本的数据对象，添加缺失的 'type' 字段
-      const newData: MediaData = {
-        ...item,  // 复制所有旧数据字段
-        type: mediaType  // 添加新的媒体类型字段
-      };
-      
-      return newData;
-    });
+    // 旧数据没有 type 字段，extractMediaData 会按扩展名补全媒体类型
+    const migratedData = this.extractMediaData(legacyData);
     
     Logger.info(`完成迁移，转换了 ${migratedData.length} 条数据记录`);
     return migratedData;
@@ -91,20 +69,19 @@ export class DataMigration {
    */
   static loadDataWithMigration(jsonData: string): MediaData[] {
     try {
-      const parsed = JSON.parse(jsonData);
+      const parsed: unknown = JSON.parse(jsonData);
       
       if (!Array.isArray(parsed)) {
         Logger.error('解析的数据不是数组格式');
         return [];
       }
       
-      if (this.isLegacyFormat(parsed)) {
+      const items: unknown[] = parsed;
+      if (this.isLegacyFormat(items)) {
         Logger.info('检测到旧版本数据格式，开始迁移...');
-        const legacyData = parsed as LegacyImageData[];
-        return this.extractMediaData(this.migrateFromLegacy(legacyData));
-      } else {
-        return this.extractMediaData(parsed);
+        return this.migrateFromLegacy(items);
       }
+      return this.extractMediaData(items);
     } catch (error) {
       Logger.error('解析 JSON 数据失败:', error);
       throw error;
@@ -114,23 +91,31 @@ export class DataMigration {
   private static extractMediaData(data: unknown[]): MediaData[] {
     return data
       .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
-      .map((item): MediaData => ({
-        id: typeof item.id === 'string' ? item.id : '',
-        path: typeof item.path === 'string' ? item.path : '',
-        title: typeof item.title === 'string' ? item.title : '',
-        tags: Array.isArray(item.tags) ? item.tags.filter((tag): tag is string => typeof tag === 'string') : [],
-        date: typeof item.date === 'string' ? item.date : new Date().toISOString(),
-        size: typeof item.size === 'string' ? item.size : '',
-        resolution: typeof item.resolution === 'string' ? item.resolution : '未知',
-        format: typeof item.format === 'string' ? item.format : '',
-        description: typeof item.description === 'string' ? item.description : '',
-        originalName: typeof item.originalName === 'string' ? item.originalName : '',
-        lastModified: typeof item.lastModified === 'number' ? item.lastModified : 0,
-        width: typeof item.width === 'number' ? item.width : undefined,
-        height: typeof item.height === 'number' ? item.height : undefined,
-        fileSize: typeof item.fileSize === 'number' ? item.fileSize : undefined,
-        type: item.type === 'video' || item.type === 'audio' ? item.type : 'image'
-      }))
+      .map((item): MediaData => {
+        const path = typeof item.path === 'string' ? item.path : '';
+        const extension = path.split('.').pop() ?? '';
+        const type = item.type === 'video' || item.type === 'audio' || item.type === 'image'
+          ? item.type
+          : (getMediaTypeByExtension(extension) ?? 'image');
+
+        return {
+          id: typeof item.id === 'string' ? item.id : '',
+          path,
+          title: typeof item.title === 'string' ? item.title : '',
+          tags: Array.isArray(item.tags) ? item.tags.filter((tag): tag is string => typeof tag === 'string') : [],
+          date: typeof item.date === 'string' ? item.date : new Date().toISOString(),
+          size: typeof item.size === 'string' ? item.size : '',
+          resolution: typeof item.resolution === 'string' ? item.resolution : '未知',
+          format: typeof item.format === 'string' ? item.format : '',
+          description: typeof item.description === 'string' ? item.description : '',
+          originalName: typeof item.originalName === 'string' ? item.originalName : '',
+          lastModified: typeof item.lastModified === 'number' ? item.lastModified : 0,
+          width: typeof item.width === 'number' ? item.width : undefined,
+          height: typeof item.height === 'number' ? item.height : undefined,
+          fileSize: typeof item.fileSize === 'number' ? item.fileSize : undefined,
+          type
+        };
+      })
       .filter((item) => item.id.length > 0 && item.path.length > 0);
   }
 

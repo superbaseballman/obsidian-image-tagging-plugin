@@ -23,25 +23,25 @@ export class Logger {
     this.pluginName = name;
   }
 
-  static debug(message: string, ...optionalParams: any[]) {
+  static debug(message: string, ...optionalParams: unknown[]) {
     if (this.level <= LogLevel.DEBUG) {
       console.log(`[${this.pluginName}] DEBUG: ${message}`, ...optionalParams);
     }
   }
 
-  static info(message: string, ...optionalParams: any[]) {
+  static info(message: string, ...optionalParams: unknown[]) {
     if (this.level <= LogLevel.INFO) {
       console.info(`[${this.pluginName}] INFO: ${message}`, ...optionalParams);
     }
   }
 
-  static warn(message: string, ...optionalParams: any[]) {
+  static warn(message: string, ...optionalParams: unknown[]) {
     if (this.level <= LogLevel.WARN) {
       console.warn(`[${this.pluginName}] WARN: ${message}`, ...optionalParams);
     }
   }
 
-  static error(message: string, ...optionalParams: any[]) {
+  static error(message: string, ...optionalParams: unknown[]) {
     if (this.level <= LogLevel.ERROR) {
       console.error(`[${this.pluginName}] ERROR: ${message}`, ...optionalParams);
     }

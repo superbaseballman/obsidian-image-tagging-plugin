@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - 增加用户进行分享图库等操作的功能
 
+### Changed
+- 设置页改用 Obsidian 声明式设置 API（`getSettingDefinitions()`），设置项可被设置搜索索引到；最低支持版本提升至 Obsidian 1.13.0。
+- 清理代码规范问题：移除不必要的类型断言与 `any`、统一使用 `Logger`、补齐未处理的 Promise、按扩展名推断媒体类型。
+
 ## [2.2.11] 
 ### Fixed - 2026-10-05
 - 修复启动时恢复图库标签页却不加载的问题。
