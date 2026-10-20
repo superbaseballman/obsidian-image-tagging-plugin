@@ -192,12 +192,13 @@ export async function getMediaDurationWithCache(file: TFile, app: App): Promise<
         const hours = Math.floor(duration / 3600);
         const minutes = Math.floor((duration % 3600) / 60);
         const seconds = Math.floor(duration % 60);
+        const formatTwoDigits = (value: number): string => value < 10 ? `0${value}` : `${value}`;
         
         let durationStr = '';
         if (hours > 0) {
-          durationStr = `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+          durationStr = `${hours}:${formatTwoDigits(minutes)}:${formatTwoDigits(seconds)}`;
         } else {
-          durationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+          durationStr = `${minutes}:${formatTwoDigits(seconds)}`;
         }
         
         // 存入缓存
