@@ -1,0 +1,65 @@
+## Source code
+
+- **Warning**: This assertion is unnecessary since it does not change the type of the expression.
+  - src/main.ts:47, src/main.ts:195, src/main.ts:227, src/main.ts:228, src/main.ts:230, src/main.ts:243, src/main.ts:244, src/main.ts:258, src/main.ts:259, src/main.ts:260, src/main.ts:984, src/main.ts:1236, src/main.ts:1248, src/services/sqlite-store.ts:100
+- **Warning**: Avoid casting to 'TFile'. Use an 'instanceof TFile' check to safely narrow the type.
+  - src/main.ts:137, src/main.ts:162, src/main.ts:178, src/main.ts:227, src/main.ts:228, src/main.ts:230, src/main.ts:243, src/main.ts:244, src/main.ts:258, src/main.ts:259, src/main.ts:260, src/services/data-migration.ts:66
+- **Warning**: Unsafe assignment of an `error` or `any` typed value
+  - @typescript-eslint/no-unsafe-assignment
+  - src/main.ts:756, src/services/data-migration.ts:43, src/services/data-migration.ts:94, src/services/sqlite-store.ts:117, src/utils/error-handler.ts:14, src/utils/platform.ts:67, src/utils/utils.ts:284
+- **Warning**: Promise returned in function argument where a void return was expected.
+  - src/main.ts:990-998, src/main.ts:1405-1411, src/main.ts:1422-1425, src/views/gallery-view.ts:271-273, src/views/gallery-view.ts:1273-1319, src/views/gallery-view.ts:1688-1707
+- **Warning**: This assertion is unnecessary since the receiver accepts the original type of the expression.
+  - src/main.ts:1143, src/utils/platform.ts:45, src/utils/platform.ts:56
+- **Warning**: Promises must be awaited, end with a call to .catch, end with a call to .then with a rejection handler or be explicitly marked as ignored with the `void` operator.
+  - src/main.ts:1211, src/main.ts:1230, src/views/gallery-view.ts:772, src/views/gallery-view.ts:1335, src/views/gallery-view.ts:1404, src/views/gallery-view.ts:1431, src/views/image-info-view.ts:220, src/views/image-info-view.ts:371, src/views/image-info-view.ts:375
+- **Warning**: This PluginSettingTab does not implement getSettingDefinitions(); its settings will not appear in Obsidian's settings search for users on 1.13.0 or later. Consider adopting the declarative settings API.
+  - src/main.ts:1288
+- **Warning**: Unexpected any. Specify a different type.
+  - src/services/data-migration.ts:37, src/utils/error-handler.ts:8, src/utils/error-handler.ts:10, src/utils/logger.ts:26, src/utils/logger.ts:32, src/utils/logger.ts:38, src/utils/logger.ts:44, src/utils/utils.ts:91, src/utils/utils.ts:284
+- **Warning**: Unsafe call of an `error` or `any` typed value
+  - @typescript-eslint/no-unsafe-call
+  - src/services/data-migration.ts:44, src/utils/utils.ts:197, src/utils/utils.ts:197, src/utils/utils.ts:199, src/utils/utils.ts:284
+- **Warning**: Do not access Object.prototype method 'hasOwnProperty' from target object.
+  - src/services/data-migration.ts:44
+- **Warning**: Unsafe member access on an `error` or `any` typed value
+  - @typescript-eslint/no-unsafe-member-access
+  - src/services/data-migration.ts:44, src/utils/platform.ts:68, src/utils/utils.ts:91, src/utils/utils.ts:284
+- **Warning**: Avoid unnecessary logging to console
+  - https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines#Avoid+unnecessary+logging+to+console
+  - src/utils/logger.ts:28, src/utils/logger.ts:34
+- **Warning**: Passes unsafe values into typed parameters
+  - @typescript-eslint/no-unsafe-argument
+  - src/utils/logger.ts:28, src/utils/logger.ts:34, src/utils/logger.ts:40, src/utils/logger.ts:46
+- **Warning**: Do not import Node.js built-in module "fs". Node.js APIs are not available on mobile. Use a dynamic import() or require() guarded by Platform.isDesktop instead.
+  - src/utils/platform.ts:56
+- **Warning**: Do not import Node.js built-in module "path". Node.js APIs are not available on mobile. Use a dynamic import() or require() guarded by Platform.isDesktop instead.
+  - src/utils/platform.ts:67
+- **Warning**: Returns unsafe values from typed code
+  - @typescript-eslint/no-unsafe-return
+  - src/utils/platform.ts:68
+- **Warning**: Uses `document.createElement` instead of Obsidian's `createEl` helpers
+  - obsidianmd/prefer-create-el
+  - src/views/gallery-view.ts:97, src/views/gallery-view.ts:101, src/views/gallery-view.ts:103, src/views/gallery-view.ts:117-123, src/views/gallery-view.ts:142, src/views/gallery-view.ts:145, src/views/gallery-view.ts:148, src/views/gallery-view.ts:184, src/views/gallery-view.ts:226, src/views/gallery-view.ts:230, src/views/gallery-view.ts:233, src/views/gallery-view.ts:235, src/views/gallery-view.ts:237, src/views/gallery-view.ts:238, src/views/gallery-view.ts:239, src/views/gallery-view.ts:240, src/views/gallery-view.ts:241, src/views/gallery-view.ts:242, src/views/gallery-view.ts:243, src/views/gallery-view.ts:244, src/views/gallery-view.ts:245, src/views/gallery-view.ts:248, src/views/gallery-view.ts:251, src/views/gallery-view.ts:254, src/views/gallery-view.ts:257, src/views/gallery-view.ts:276, src/views/gallery-view.ts:277, src/views/gallery-view.ts:280, src/views/gallery-view.ts:609, src/views/gallery-view.ts:621, src/views/gallery-view.ts:622-625, src/views/gallery-view.ts:640, src/views/gallery-view.ts:642, src/views/gallery-view.ts:644, src/views/gallery-view.ts:645, src/views/gallery-view.ts:647, src/views/gallery-view.ts:650, src/views/gallery-view.ts:654, src/views/gallery-view.ts:657, src/views/gallery-view.ts:663, src/views/gallery-view.ts:664-667, src/views/gallery-view.ts:912-918, src/views/gallery-view.ts:922-928, src/views/gallery-view.ts:948-954, src/views/gallery-view.ts:1026-1032, src/views/gallery-view.ts:1052-1058, src/views/gallery-view.ts:1072, src/views/gallery-view.ts:1078, src/views/gallery-view.ts:1079, src/views/gallery-view.ts:1080, src/views/gallery-view.ts:1082, src/views/gallery-view.ts:1083, src/views/gallery-view.ts:1084, src/views/gallery-view.ts:1096, src/views/gallery-view.ts:1097, src/views/gallery-view.ts:1100, src/views/gallery-view.ts:1103, src/views/gallery-view.ts:1105, src/views/gallery-view.ts:1107, src/views/gallery-view.ts:1109, src/views/gallery-view.ts:1111, src/views/gallery-view.ts:1114, src/views/gallery-view.ts:1116, src/views/gallery-view.ts:1117, src/views/gallery-view.ts:1119, src/views/gallery-view.ts:1135, src/views/gallery-view.ts:1162, src/views/gallery-view.ts:1175, src/views/gallery-view.ts:1178, src/views/gallery-view.ts:1222, src/views/gallery-view.ts:1232, src/views/gallery-view.ts:1235, src/views/gallery-view.ts:1362-1368, src/views/gallery-view.ts:1565, src/views/gallery-view.ts:1568, src/views/gallery-view.ts:1572, src/views/gallery-view.ts:1573-1576, src/views/gallery-view.ts:1577, src/views/gallery-view.ts:1621, src/views/gallery-view.ts:1624, src/views/gallery-view.ts:1625, src/views/gallery-view.ts:1626, src/views/gallery-view.ts:1628, src/views/gallery-view.ts:1629, src/views/gallery-view.ts:1630, src/views/gallery-view.ts:1632, src/views/gallery-view.ts:1638, src/views/gallery-view.ts:1640, src/views/gallery-view.ts:1641, src/views/gallery-view.ts:1657-1660, src/views/gallery-view.ts:1671-1674, src/views/gallery-view.ts:1839, src/views/gallery-view.ts:1843, src/views/gallery-view.ts:1844, src/views/gallery-view.ts:1850, src/views/gallery-view.ts:1864, src/views/image-info-view.ts:54, src/views/image-info-view.ts:58, src/views/image-info-view.ts:61-64, src/views/image-info-view.ts:81-84, src/views/image-info-view.ts:153-156, src/views/image-info-view.ts:161, src/views/image-info-view.ts:200, src/views/image-info-view.ts:203, src/views/image-info-view.ts:206, src/views/image-info-view.ts:242, src/views/image-info-view.ts:251, src/views/image-info-view.ts:259, src/views/image-info-view.ts:262, src/views/image-info-view.ts:267, src/views/image-info-view.ts:281, src/views/image-info-view.ts:284, src/views/image-info-view.ts:289-292, src/views/image-info-view.ts:337-340, src/views/image-info-view.ts:380, src/views/image-info-view.ts:383-386, src/views/suggest-modals.ts:27
+- **Warning**: Empty block statement.
+  - src/views/image-info-view.ts:480-481
+- **Recommendation**: 'FileSystemAdapter' is defined but never used.
+  - src/main.ts:1
+- **Recommendation**: 'LogLevel' is defined but never used.
+  - src/main.ts:10
+- **Recommendation**: 'tagsContainer' is assigned a value but never used.
+  - src/views/gallery-view.ts:230
+- **Recommendation**: 'pathLink' is assigned a value but never used.
+  - src/views/gallery-view.ts:658
+- **Recommendation**: 'suggestionsContainer' is assigned a value but never used.
+  - src/views/gallery-view.ts:1156
+- **Recommendation**: 'img' is assigned a value but never used.
+  - src/views/image-info-view.ts:165, src/views/image-info-view.ts:190
+- **Recommendation**: 'video' is assigned a value but never used.
+  - src/views/image-info-view.ts:173
+- **Recommendation**: 'audio' is assigned a value but never used.
+  - src/views/image-info-view.ts:181
+- **Recommendation**: 'recentTagsLabel' is assigned a value but never used.
+  - src/views/image-info-view.ts:282
+- **Recommendation**: 'error' is defined but never used.
+  - src/views/image-info-view.ts:480

@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - 增加用户进行分享图库等操作的功能
 
+## [2.2.11] 
+### Fixed - 2026-10-05
+- 修复启动时恢复图库标签页却不加载的问题。
+
 ## [2.2.10] 
 ### Fixed - 2026-09-28
 - 修复当加入新的媒体时通知显示无新的媒体文件的bug

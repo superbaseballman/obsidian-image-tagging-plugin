@@ -43,7 +43,10 @@ export class GalleryView extends ItemView {
 
 
 
-  constructor(leaf: WorkspaceLeaf, settings: ImageTaggingSettings, imageDataManager: ImageDataManager) {
+  private initialization: Promise<void> | null = null;
+  private closed = false;
+
+  constructor(leaf: WorkspaceLeaf, settings: ImageTaggingSettings, imageDataManager: ImageDataManager, private readonly dataReady: Promise<void>) {
 
     super(leaf);
 
@@ -68,21 +71,36 @@ export class GalleryView extends ItemView {
   }
 
   async onOpen() {
+    this.closed = false;
+    // 布局恢复会调用 onOpen；不能在这里等待依赖布局就绪的数据，否则启动会互相等待。
+    void this.initialize().catch((error) => {
+      Logger.error('初始化媒体图库视图失败:', error);
+      new Notice('加载媒体图库失败，请重新打开图库');
+    });
   }
 
-  async initialize() {
-    if (this.imageGrid) return;
-
-    this.containerEl.empty();
-    this.createView();
-    const plugin = getImageTaggingPlugin(this.app);
-    if (plugin?.dataReady) {
-      await plugin.dataReady;
+  initialize(): Promise<void> {
+    if (!this.initialization) {
+      this.initialization = this.initializeWhenReady().catch((error) => {
+        this.initialization = null;
+        throw error;
+      });
     }
+    return this.initialization;
+  }
+
+  private async initializeWhenReady(): Promise<void> {
+    await this.dataReady;
+    if (this.closed) return;
+
+    this.categories = [...(this.settings.categories || ['全部媒体', '风景', '人物', '建筑', '美食', '植物', '动物', '艺术'])];
+    this.createView();
     await this.refreshGallery();
   }
 
   async onClose() {
+    this.closed = true;
+    this.initialization = null;
     // 清理防抖定时器，避免视图关闭后仍触发渲染
     if (this.searchDebounceTimer !== null) {
       window.clearTimeout(this.searchDebounceTimer);

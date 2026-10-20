@@ -12,7 +12,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    
+      id-token: write
+      attestations: write
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -46,6 +48,15 @@ jobs:
           zip -r "${ZIP_NAME}" "${PLUGIN_ID}"
           echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
           echo "Created package: ${ZIP_NAME}"
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: |
+            main.js
+            manifest.json
+            styles.css
+            ${{ steps.package.outputs.zip_name }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

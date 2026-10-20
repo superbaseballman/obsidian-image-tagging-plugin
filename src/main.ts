@@ -65,7 +65,7 @@ export default class ImageTaggingPlugin extends Plugin {
     // 注册视图
     this.registerView(
       GALLERY_VIEW_TYPE,
-      (leaf) => new GalleryView(leaf, this.settings, this.imageDataManager)
+      (leaf) => new GalleryView(leaf, this.settings, this.imageDataManager, this.dataReady)
     );
     this.registerView(
       IMAGE_INFO_VIEW_TYPE,
